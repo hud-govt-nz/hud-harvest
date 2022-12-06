@@ -17,7 +17,7 @@ def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", ignore_
     table_name = task.table_name
     schema = task.schema
     database = task.database
-    df = pd.read_csv(local_fn, encoding = encoding)
+    df = pd.read_csv(local_fn, dtype = str, encoding = encoding)
     print(f"Loading {len(df)} rows from dataset '{task_name}'...")
     df["task_name"] = task_name
     usable_cols = check_columns(df, table_name, schema, database, ignore_errors)
@@ -31,7 +31,7 @@ def sql_debug_loader(local_fn, task, if_exists = "append", encoding = "utf-8"):
     table_name = task.table_name
     schema = task.schema
     database = task.database
-    df = pd.read_csv(local_fn, encoding = encoding)
+    df = pd.read_csv(local_fn, dtype = str, encoding = encoding)
     print(f"TESTING ONLY: Fake loading {len(df)} rows from dataset '{task_name}'...")
     df["task_name"] = f"debug_{task_name}"
     usable_cols = check_columns(df, table_name, schema, database, ignore_errors = True)
