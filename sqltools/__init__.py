@@ -12,12 +12,12 @@ if not DB_CONN: raise Exception("DB_CONN not set in .env! Read the 'Setting secr
 #   Loaders   #
 #=============#
 # Load a CSV into SQL
-def sql_loader(local_fn, task, if_exists = "append", ignore_errors = False):
+def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", ignore_errors = False):
     task_name = task.task_name
     table_name = task.table_name
     schema = task.schema
     database = task.database
-    df = pd.read_csv(local_fn)
+    df = pd.read_csv(local_fn, encoding = encoding)
     print(f"Loading {len(df)} rows from dataset '{task_name}'...")
     df["task_name"] = task_name
     usable_cols = check_columns(df, table_name, schema, database, ignore_errors)
@@ -26,12 +26,12 @@ def sql_loader(local_fn, task, if_exists = "append", ignore_errors = False):
     return len(df)
 
 # Load a dataset row by row to debug type errors
-def sql_debug_loader(local_fn, task, if_exists = "append"):
+def sql_debug_loader(local_fn, task, if_exists = "append", encoding = "utf-8"):
     task_name = task.task_name
     table_name = task.table_name
     schema = task.schema
     database = task.database
-    df = pd.read_csv(local_fn)
+    df = pd.read_csv(local_fn, encoding = encoding)
     print(f"TESTING ONLY: Fake loading {len(df)} rows from dataset '{task_name}'...")
     df["task_name"] = f"debug_{task_name}"
     usable_cols = check_columns(df, table_name, schema, database, ignore_errors = True)
