@@ -67,7 +67,7 @@ def sql_debug_loader(local_fn, task, if_exists = "append", encoding = "utf-8"):
 #   pyodbc-based   #
 #==================#
 def token_to_bytes(token):
-    exptoken = b''
+    exptoken = b""
     for i in bytes(token, "UTF-8"):
         exptoken += bytes({i})
         exptoken += bytes(1)
@@ -76,8 +76,7 @@ def token_to_bytes(token):
 def pyodbc_conn(database):
     creds = AzureCliCredential() # Use default credentials - use `az cli login` to set this up
     raw_token = creds.get_token("https://database.windows.net/")
-    bytes_token = token_to_bytes(raw_token[0])
-    attrs_before = { 1256: token_to_bytes(raw_token[0]) } # No clue wtf this is
+    attrs_before = { 1256: token_to_bytes(raw_token[0]) } # From https://github.com/AzureAD/azure-activedirectory-library-for-python/wiki/Connect-to-Azure-SQL-Database
     conn = pyodbc.connect(f"{DB_CONN};Database={database};", attrs_before = attrs_before)
     return conn
 
