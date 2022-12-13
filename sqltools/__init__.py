@@ -1,8 +1,10 @@
 import os
+import struct
 import pyodbc
 import pandas as pd
 import numpy as np
 from sqlalchemy.engine import URL, create_engine
+from azure.identity import AzureCliCredential
 
 DB_CONN = os.getenv("DB_CONN")
 if not DB_CONN: raise Exception("DB_CONN not set in .env! Read the 'Setting secrets' section in the README.")
@@ -64,8 +66,19 @@ def sql_debug_loader(local_fn, task, if_exists = "append", encoding = "utf-8"):
 #==================#
 #   pyodbc-based   #
 #==================#
+def token_to_bytes(token):
+    exptoken = b''
+    for i in bytes(token, "UTF-8"):
+        exptoken += bytes({i})
+        exptoken += bytes(1)
+    return struct.pack("=i", len(exptoken)) + exptoken
+
 def pyodbc_conn(database):
-    conn = pyodbc.connect(f"{DB_CONN};Database={database};")
+    creds = AzureCliCredential() # Use default credentials - use `az cli login` to set this up
+    raw_token = creds.get_token("https://database.windows.net/")
+    bytes_token = token_to_bytes(raw_token[0])
+    attrs_before = { 1256: token_to_bytes(raw_token[0]) } # No clue wtf this is
+    conn = pyodbc.connect(f"{DB_CONN};Database={database};", attrs_before = attrs_before)
     return conn
 
 def run_query(query, database, mode):
