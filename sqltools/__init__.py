@@ -3,7 +3,8 @@ import struct
 import pyodbc
 import pandas as pd
 import numpy as np
-from sqlalchemy.engine import URL, create_engine, event
+from sqlalchemy import event
+from sqlalchemy.engine import URL, create_engine
 from azure.identity import AzureCliCredential
 
 DB_CONN = os.getenv("DB_CONN")
