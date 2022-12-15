@@ -3,7 +3,7 @@ import struct
 import pyodbc
 import pandas as pd
 import numpy as np
-from sqlalchemy.engine import URL, create_engine
+from sqlalchemy.engine import URL, create_engine, event
 from azure.identity import AzureCliCredential
 
 DB_CONN = os.getenv("DB_CONN")
@@ -63,21 +63,24 @@ def sql_debug_loader(local_fn, task, if_exists = "append", encoding = "utf-8"):
     cur.rollback()
 
 
+#====================#
+#   Authentication   #
+#====================#
+# Get connection token
+# https://github.com/AzureAD/azure-activedirectory-library-for-python/wiki/Connect-to-Azure-SQL-Database
+# https://docs.sqlalchemy.org/en/14/dialects/mssql.html#connecting-to-databases-with-access-tokens
+def get_conn_token():
+    creds = AzureCliCredential() # Use default credentials - use `az cli login` to set this up
+    raw_token = creds.get_token("https://database.windows.net/").token.encode("utf-16-le")
+    token_struct = struct.pack(f"<I{len(raw_token)}s", len(raw_token), raw_token)
+    return { 1256: token_struct } # Connection option for access tokens, as defined in msodbcsql.h
+
+
 #==================#
 #   pyodbc-based   #
 #==================#
-def token_to_bytes(token):
-    exptoken = b""
-    for i in bytes(token, "UTF-8"):
-        exptoken += bytes({i})
-        exptoken += bytes(1)
-    return struct.pack("=i", len(exptoken)) + exptoken
-
 def pyodbc_conn(database):
-    creds = AzureCliCredential() # Use default credentials - use `az cli login` to set this up
-    raw_token = creds.get_token("https://database.windows.net/")
-    attrs_before = { 1256: token_to_bytes(raw_token[0]) } # From https://github.com/AzureAD/azure-activedirectory-library-for-python/wiki/Connect-to-Azure-SQL-Database
-    conn = pyodbc.connect(f"{DB_CONN};Database={database};", attrs_before = attrs_before)
+    conn = pyodbc.connect(f"{DB_CONN};Database={database};", attrs_before = get_conn_token())
     return conn
 
 def run_query(query, database, mode):
@@ -110,9 +113,13 @@ def query_to_df(query, database):
 #   sqlalchemy-based   #
 #======================#
 def sqlalchemy_engine(database, fast_executemany = True):
-    conn_config = { "odbc_connect": f"{DB_CONN};Database={database};" }
-    conn_url = URL.create("mssql+pyodbc", query = conn_config)
-    return create_engine(conn_url, fast_executemany = fast_executemany)
+    conn_url = URL.create("mssql+pyodbc", query = { "odbc_connect": f"{DB_CONN};Database={database};" })
+    engine = create_engine(conn_url, fast_executemany = fast_executemany)
+    @event.listens_for(engine, "do_connect")
+    def provide_token(dialect, conn_rec, cargs, cparams):
+        cargs[0] = cargs[0].replace(";Trusted_Connection=Yes", "") # remove the "Trusted_Connection" parameter that SQLAlchemy adds
+        cparams["attrs_before"] = get_conn_token() # Add access token
+    return engine
 
 
 #=============#
