@@ -18,22 +18,29 @@ def download(src_url, dst_fn):
     print(f"Downloading {src_url}...")
     res = requests.get(src_url, stream=True)
     dst = Path(dst_fn)
-    src_size = int(res.headers["Content-Length"])
-    if dst.exists():
-        dst_size = dst.stat().st_size
-        if dst_size == 0:
-            pass # Ignore empty files
-        elif src_size == dst_size:
-            print("Local file of the same size already exists, ignoring.")
-            return
-        else:
-            src_date = datetime.strptime(res.headers["Last-Modified"], "%a, %d %b %Y %H:%M:%S %Z")
-            dst_date = datetime.fromtimestamp(dst.stat().st_mtime)
-            print(f"Local file exists ({dst_size} bytes, last modified {dst_date}), "
-                  f"but does not match remote file ({src_size} bytes, last modified {src_date})! "
-                  f"Delete local file if you want to continue.")
-            raise Exception("Mismatched local file!")
-    print(f"...file is {src_size} bytes...")
+    if res.headers.get("Transfer-Encoding") == "chunked":
+        print(f"...as a chunked transfer...")
+        if dst.exists():
+            print("CAUTION: Can't match sized on a chunked transfer, overwriting...")
+    elif res.headers.get("Content-Length"):
+        src_size = int(res.headers["Content-Length"])
+        print(f"...file is {src_size} bytes...")
+        if dst.exists():
+            dst_size = dst.stat().st_size
+            if dst_size == 0:
+                pass # Ignore empty files
+            elif src_size == dst_size:
+                print("Local file of the same size already exists, ignoring.")
+                return
+            else:
+                src_date = datetime.strptime(res.headers["Last-Modified"], "%a, %d %b %Y %H:%M:%S %Z")
+                dst_date = datetime.fromtimestamp(dst.stat().st_mtime)
+                print(f"Local file exists ({dst_size} bytes, last modified {dst_date}), "
+                      f"but does not match remote file ({src_size} bytes, last modified {src_date})! "
+                      f"Delete local file if you want to continue.")
+                raise Exception("Mismatched local file!")
+    else:
+        raise Exception("No 'Content-Length' in header and not chunked transfer. What kind of transfer is this??")
     with open(dst_fn, "wb") as f:
         res = requests.get(src_url)
         res.raise_for_status()
