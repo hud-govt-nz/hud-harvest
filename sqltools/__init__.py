@@ -1,12 +1,15 @@
-import os
+import os, sys, csv
 import struct
 import pyodbc
+import math, itertools
 import pandas as pd
 import numpy as np
+from datetime import datetime
 from sqlalchemy import event
 from sqlalchemy.engine import URL, create_engine
 from azure.identity import AzureCliCredential
 
+csv.field_size_limit(sys.maxsize)
 DB_CONN = os.getenv("DB_CONN")
 if not DB_CONN: raise Exception("DB_CONN not set in .env! Read the 'Setting secrets' section in the README.")
 
@@ -15,53 +18,95 @@ if not DB_CONN: raise Exception("DB_CONN not set in .env! Read the 'Setting secr
 #   Loaders   #
 #=============#
 # Load a CSV into SQL
-def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", ignore_errors = False):
+def sql_loader(local_fn, task, encoding = "utf-8", strict_mode = True, batch_size = 1000):
+    if batch_size > 10000:
+        print("\033[1;33mCAUTION! batch_size > 10000 is not recommended!\033[0m")
     task_name = task.task_name
     table_name = task.table_name
     schema = task.schema
     database = task.database
-    df = pd.read_csv(local_fn, dtype = str, encoding = encoding)
-    print(f"Loading {len(df)} rows from dataset '{task_name}'...")
-    df["task_name"] = task_name
-    usable_cols = check_columns(df, table_name, schema, database, ignore_errors)
-    engine = sqlalchemy_engine(database)
-    df[usable_cols].to_sql(table_name, engine, schema, if_exists, index = False, chunksize = 1000)
-    return len(df)
-
-# Load a dataset row by row to debug type errors
-def sql_debug_loader(local_fn, task, if_exists = "append", encoding = "utf-8"):
-    task_name = task.task_name
-    table_name = task.table_name
-    schema = task.schema
-    database = task.database
-    df = pd.read_csv(local_fn, dtype = str, encoding = encoding)
-    print(f"TESTING ONLY: Fake loading {len(df)} rows from dataset '{task_name}'...")
-    df["task_name"] = f"debug_{task_name}"
-    usable_cols = check_columns(df, table_name, schema, database, ignore_errors = True)
-    # Load
+    # Initialise database
     conn = pyodbc_conn(database)
     cur = conn.cursor()
-    df = df.replace({ np.nan: None })
-    for i,row in df[usable_cols].iterrows():
-        # Try to insert the row, if it works, then it's fine
-        try:
-            query = f"INSERT INTO [{schema}].[{table_name}]({','.join(usable_cols)}) VALUES ({','.join(['?'] * len(usable_cols))})"
-            cur.execute(query, *row)
-            continue
-        # If it fails, do each value one by one until you find the problem
-        except:
-            for k,v in row.items():
+    cur.fast_executemany = True
+    # Read file
+    print(f"Reading '{local_fn}'...")
+    with open(local_fn, "r", encoding = encoding) as f:
+        reader = csv.reader(f)
+        src_cols = next(reader) + ["task_name"]
+        query = make_insert_query(src_cols, table_name, schema, database, strict_mode)
+        print(f"Loading data into [{schema}].[{table_name}]...")
+        row_count = 0
+        start = datetime.now()
+        while True:
+            params = []
+            for row in reader:
+                params.append(row + [task_name])
+                if len(params) >= batch_size: break
+            if params:
                 try:
-                    query = f"INSERT INTO [{schema}].[{table_name}]({k}) VALUES (?)"
-                    cur.execute(query, v)
+                    cur.executemany(query, params)
+                except KeyboardInterrupt:
+                    print("Aborted.")
+                    sys.exit()
                 except:
-                    print(f"{k}: {v}")
+                    print("\033[1;31mLoad failed. Aborting and trying to find the problem...\033[0m")
+                    cur.rollback()
+                    bad_row = find_bad_row(query, params, conn)
+                    bad_col = find_bad_columns(bad_row, src_cols, table_name, schema, conn)
                     raise
+                row_count += len(params)
+                if not row_count % 50000:
+                    print(f"{row_count} rows loaded in {datetime.now() - start}s...")
+                    start = datetime.now()
             else:
-                print(row)
-                print("Row failed to load, but all the individual values loaded??")
-                raise
-    cur.rollback()
+                cur.commit()
+                print("Load complete.")
+                return row_count
+
+# Return the first bad row that's causing a failure in in a executemany operations
+def find_bad_row(query, params, conn, steps = 100):
+    cur = conn.cursor()
+    cur.fast_executemany = True
+    batch_size = math.ceil(len(params) / steps)
+    for i in range(0, len(params), batch_size):
+        batch = params[i:i + batch_size]
+        try:
+            cur.executemany(query, batch)
+        except:
+            cur.rollback()
+            if batch_size == 1: return batch[0]
+            else: return find_bad_row(query, batch, conn)
+    else:
+        cur.rollback()
+        print("All batches successfully loaded. No bad rows found??")
+
+# Return the columns that are causing problems
+def find_bad_columns(bad_row, src_cols, table_name, schema, conn, max_omit = 3, show_errors = False):
+    cur = conn.cursor()
+    cur.fast_executemany = True
+    bad_row = dict(zip(src_cols, bad_row))
+    errors = []
+    max_omit = min(max_omit, len(src_cols))
+    for l in range(max_omit):
+        for omit_cols in itertools.combinations(src_cols, l):
+            row = { k:v for k,v in bad_row.items() if k not in omit_cols }
+            query = (f"INSERT INTO [{schema}].[{table_name}]({','.join(row.keys())}) "
+                     f"VALUES ({','.join(['?'] * len(row))})")
+            params = [list(row.values())]
+            try:
+                cur.executemany(query, params) # DO NOT USE execute(), somethings fail on executemany() but succeed on execute()
+                cur.rollback()
+                for c in omit_cols:
+                    print(f"\033[1;31mRow will load without '{c}': '{bad_row[c]}'\033[0m")
+                return omit_cols
+            except Exception as e:
+                if show_errors: print(f"{list(omit_cols)}: {e}")
+                continue # This combination of column removals doesn't work, try the next one
+    else:
+        cur.rollback()
+        print(bad_row)
+        print("\033[1;31mNo combination of column removals worked, sorry.\033[0m")
 
 
 #====================#
@@ -122,6 +167,24 @@ def sqlalchemy_engine(database, fast_executemany = True):
         cparams["attrs_before"] = get_conn_token() # Add access token
     return engine
 
+# Load a CSV into SQL with SQLAlchemy
+# [DEPRECATED] Has a memory leak issue when used with VARCHAR(max) columns, will cause problems for large files
+# But it can be used to create tables on the fly, for when you're too lazy to make a table
+def sqlalchemy_loader(local_fn, task, encoding = "utf-8", strict_mode = True, if_exists = "append"):
+    task_name = task.task_name
+    table_name = task.table_name
+    schema = task.schema
+    database = task.database
+    df = pd.read_csv(local_fn, dtype = str, encoding = encoding)
+    if df.memory_usage().sum() > 50000000:
+        print("\033[1;33mCAUTION! sqlalchemy_loader() might have trouble handling large files, consider using sql_loader().\033[0m")
+    print(f"Loading {len(df)} rows from dataset '{task_name}'...")
+    df["task_name"] = task_name
+    check_columns(df.columns, table_name, schema, database, strict_mode)
+    engine = sqlalchemy_engine(database)
+    df[usable_cols].to_sql(table_name, engine, schema, if_exists, index = False, chunksize = 1000)
+    return len(df)
+
 
 #=============#
 #   Columns   #
@@ -131,16 +194,23 @@ def get_columns(table, schema, database):
     cur = run_query(query, database, mode = "read")
     return [d[0] for d in cur.description]
 
-def check_columns(df, table, schema, database, ignore_errors = False):
-    expected_cols = get_columns(table, schema, database)
-    actual_cols = list(df.columns)
-    missing_cols = [c for c in expected_cols if c not in actual_cols]
-    extra_cols = [c for c in actual_cols if c not in expected_cols]
-    usable_cols = [c for c in actual_cols if c in expected_cols]
-    if missing_cols:
-        print(f"Missing columns: {missing_cols}")
-        if not ignore_errors: raise Exception(f"Expected columns are missing!")
-    if extra_cols:
-        print(f"Unexpected columns: {extra_cols}")
-        if not ignore_errors: raise Exception(f"Unexpected columns are present!")
-    return usable_cols
+def check_columns(src_cols, table, schema, database, strict_mode = True):
+    return make_insert_query(src_cols, table, schema, database, strict_mode = True) == None
+
+def make_insert_query(src_cols, table, schema, database, strict_mode = True):
+    tbl_cols = get_columns(table, schema, database)
+    src_cols = list(src_cols)
+    missing_cols = [c for c in tbl_cols if c not in src_cols]
+    extra_cols = [c for c in src_cols if c not in tbl_cols]
+    usable_cols = [c for c in src_cols if c in tbl_cols]
+    # Exact match, no need to name columns
+    if [c.lower() for c in src_cols] == [c.lower() for c in tbl_cols]:
+        return (f"INSERT INTO [{schema}].[{table}] "
+                f"VALUES ({','.join(['?'] * len(usable_cols))})")
+    if missing_cols or extra_cols:
+        print(f"\033[1;33mExpected columns (from table): {tbl_cols}\033[0m")
+        print(f"\033[1;33mActual columns (from data): {src_cols}\033[0m")
+        if strict_mode: raise Exception(f"Expected columns are missing or unexpected columns are present!")
+    # Otherwise name columns - remember you can have identical columns in the wrong order
+    return (f"INSERT INTO [{schema}].[{table}]({','.join(usable_cols)}) "
+            f"VALUES ({','.join(['?'] * len(usable_cols))})")
