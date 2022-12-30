@@ -49,11 +49,14 @@ def sql_loader(local_fn, task, encoding = "utf-8", strict_mode = True, batch_siz
                 except KeyboardInterrupt:
                     print("Aborted.")
                     sys.exit()
-                except:
+                except pyodbc.ProgrammingError:
                     print("\033[1;31mLoad failed. Aborting and trying to find the problem...\033[0m")
                     cur.rollback()
                     bad_row = find_bad_row(query, params, conn)
                     bad_col = find_bad_columns(bad_row, src_cols, table_name, schema, conn)
+                    raise
+                except:
+                    print("\033[1;31mUnknown error!\033[0m")
                     raise
                 row_count += len(params)
                 if not row_count % 50000:
@@ -65,7 +68,13 @@ def sql_loader(local_fn, task, encoding = "utf-8", strict_mode = True, batch_siz
                 return row_count
 
 # Return the first bad row that's causing a failure in in a executemany operations
-def find_bad_row(query, params, conn, steps = 100):
+# Will test params in [steps] steps:
+# i.e. If there are 50000 rows in params, it'll test in 100 x 500 row batches
+# until it finds a bad batch, then it'll test that batch in 100 x 5 row batches
+# until it finds a bad batch, then it'll test that batch in 5 x 1 rows until it
+# find the bad row.
+def find_bad_row(query, params, conn, steps = 100, is_orig = True):
+    if is_orig: print("Looking for bad row in batch...")
     cur = conn.cursor()
     cur.fast_executemany = True
     batch_size = math.ceil(len(params) / steps)
@@ -75,14 +84,21 @@ def find_bad_row(query, params, conn, steps = 100):
             cur.executemany(query, batch)
         except:
             cur.rollback()
-            if batch_size == 1: return batch[0]
-            else: return find_bad_row(query, batch, conn)
+            if batch_size == 1:
+                print("\033[1;31mBad row found:\033[0m", batch[0])
+                return batch[0]
+            else:
+                return find_bad_row(query, batch, conn, steps, is_orig = False)
     else:
         cur.rollback()
         print("All batches successfully loaded. No bad rows found??")
 
 # Return the columns that are causing problems
+# Will attempt to load the same row with different combinations of omitted columns
+# i.e. Try without column [A], then without column [B] etc, then without [A, B],
+# [A, C], etc, up to all combinations of length [max_omit].
 def find_bad_columns(bad_row, src_cols, table_name, schema, conn, max_omit = 3, show_errors = False):
+    print("Testing different combination of columns...")
     cur = conn.cursor()
     cur.fast_executemany = True
     bad_row = dict(zip(src_cols, bad_row))
