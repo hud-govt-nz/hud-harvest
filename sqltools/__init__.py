@@ -61,7 +61,7 @@ def sql_loader(local_fn, task, encoding = "utf-8", strict_mode = True, batch_siz
                     start = datetime.now()
             else:
                 cur.commit()
-                print("Load complete.")
+                print(f"{row_count} rows loaded in {datetime.now() - start}s.")
                 return row_count
 
 # Return the first bad row that's causing a failure in in a executemany operations
