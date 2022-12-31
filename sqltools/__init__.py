@@ -159,7 +159,7 @@ def run_query(query, database, mode, verbose = False):
     conn = pyodbc_conn(database)
     cur = conn.cursor()
     cur.execute(query)
-    if mode == "read": cur.rollback()
+    if mode == "read": pass
     elif mode == "write": cur.commit()
     elif mode == "test": cur.rollback()
     else: raise Exception("Mode must be 'read', 'write', or 'test'!")
