@@ -145,20 +145,18 @@ def pyodbc_conn(database):
     conn = pyodbc.connect(f"{DB_CONN};Database={database};", attrs_before = get_conn_token())
     return conn
 
-def run_query(query, database, mode):
+def run_query(query, database, mode, verbose = False):
+    if verbose: print(f"Running query:", query)
+    start = datetime.now()
     conn = pyodbc_conn(database)
     cur = conn.cursor()
     cur.execute(query)
-    if mode == "read":
-        return cur
-    elif mode == "write":
-        cur.commit()
-        return cur
-    elif mode == "test":
-        cur.rollback()
-        return cur
-    else:
-        raise Exception("Mode must be 'read', 'write', or 'test'!")
+    if mode == "read": cur.rollback()
+    elif mode == "write": cur.commit()
+    elif mode == "test": cur.rollback()
+    else: raise Exception("Mode must be 'read', 'write', or 'test'!")
+    if verbose: print(f"Query completed in {datetime.now() - start}s.")
+    return cur
 
 def query_to_df(query, database):
     print("Executing query...")
