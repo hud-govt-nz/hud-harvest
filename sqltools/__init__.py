@@ -18,7 +18,7 @@ if not DB_CONN: raise Exception("DB_CONN not set in .env! Read the 'Setting secr
 #   Loaders   #
 #=============#
 # Load a CSV into SQL
-def sql_loader(local_fn, task, encoding = "utf-8", strict_mode = True, batch_size = 1000):
+def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", strict_mode = True, batch_size = 1000):
     if batch_size > 10000:
         print("\033[1;33mCAUTION! batch_size > 10000 is not recommended!\033[0m")
     task_name = task.task_name
@@ -35,6 +35,14 @@ def sql_loader(local_fn, task, encoding = "utf-8", strict_mode = True, batch_siz
         reader = csv.reader(f)
         src_cols = next(reader) + ["task_name"]
         query = make_insert_query(src_cols, table_name, schema, database, strict_mode)
+        if if_exists == "replace":
+            cur.execute(f"SELECT COUNT(*) FROM [{schema}].[{table_name}]")
+            old_row_count = cur.fetchone()[0]
+            if old_row_count:
+                print(f"\033[1;33mTruncating {old_row_count} existing rows from [{schema}].[{table_name}]...\033[0m")
+                cur.execute(f"TRUNCATE TABLE [{schema}].[{table_name}]")
+        elif if_exists != "append":
+            raise Exception("if_exists must be 'replace' or 'append'!")
         print(f"Loading data into [{schema}].[{table_name}]...")
         row_count = 0
         start = datetime.now()
