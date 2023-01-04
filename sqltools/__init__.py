@@ -57,14 +57,11 @@ def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", strict_
                 except KeyboardInterrupt:
                     print("Aborted.")
                     sys.exit()
-                except pyodbc.ProgrammingError:
+                except:
                     print("\033[1;31mLoad failed. Aborting and trying to find the problem...\033[0m")
                     cur.rollback()
                     bad_row = find_bad_row(query, params, conn)
                     bad_col = find_bad_columns(bad_row, src_cols, table_name, schema, conn)
-                    raise
-                except:
-                    print("\033[1;31mUnknown error!\033[0m")
                     raise
                 row_count += len(params)
                 if not row_count % 50000:
