@@ -112,7 +112,8 @@ def find_bad_columns(bad_row, src_cols, table_name, schema, conn, max_omit = 3, 
     for l in range(max_omit):
         for omit_cols in itertools.combinations(src_cols, l):
             row = { k:v for k,v in bad_row.items() if k not in omit_cols }
-            query = (f"INSERT INTO [{schema}].[{table_name}]({','.join(row.keys())}) "
+            cols_str = ','.join([f"[{c}]" for c in row.keys()])
+            query = (f"INSERT INTO [{schema}].[{table_name}]({cols_str}) "
                      f"VALUES ({','.join(['?'] * len(row))})")
             params = [list(row.values())]
             try:
@@ -231,5 +232,6 @@ def make_insert_query(src_cols, table, schema, database, strict_mode = True):
         print(f"\033[1;33mActual columns (from data): {src_cols}\033[0m")
         if strict_mode: raise Exception(f"Expected columns are missing or unexpected columns are present!")
     # Otherwise name columns - remember you can have identical columns in the wrong order
-    return (f"INSERT INTO [{schema}].[{table}]({','.join(usable_cols)}) "
+    cols_str = ','.join([f"[{c}]" for c in usable_cols])
+    return (f"INSERT INTO [{schema}].[{table}]({cols_str}) "
             f"VALUES ({','.join(['?'] * len(usable_cols))})")
