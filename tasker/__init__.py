@@ -105,8 +105,9 @@ class Task:
             # if forced:
             #     status(f"Force loading {self.name}...", "warning")
             #     self.unload()
+            start = datetime.now()
             row_count = loader(local_fn, self, **kwargs)
-            status(f"'{self.name}' loaded ({row_count} rows).", "success")
+            status(f"'{self.name}' loaded ({row_count} rows) in {datetime.now() - start}s.", "success")
             self.set_log({
                 "row_count": row_count,
                 "loaded_at": datetime.now()
