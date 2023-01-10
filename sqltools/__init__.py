@@ -49,6 +49,7 @@ def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", strict_
         while True:
             params = []
             for row in reader:
+                row = [None if r == '' else r for r in row]
                 params.append(row + [task_name])
                 if len(params) >= batch_size: break
             if params:
