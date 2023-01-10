@@ -203,7 +203,7 @@ def sqlalchemy_loader(local_fn, task, encoding = "utf-8", strict_mode = True, if
     df["task_name"] = task_name
     check_columns(df.columns, table_name, schema, database, strict_mode)
     engine = sqlalchemy_engine(database)
-    df[usable_cols].to_sql(table_name, engine, schema, if_exists, index = False, chunksize = 1000)
+    df.to_sql(table_name, engine, schema, if_exists, index = False, chunksize = 1000)
     return len(df)
 
 
