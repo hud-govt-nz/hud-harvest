@@ -224,15 +224,20 @@ def make_insert_query(src_cols, table, schema, database, strict_mode = True):
     missing_cols = [c for c in tbl_cols if c not in src_cols]
     extra_cols = [c for c in src_cols if c not in tbl_cols]
     usable_cols = [c for c in src_cols if c in tbl_cols]
-    # Exact match, no need to name columns
-    if [c.lower() for c in src_cols] == [c.lower() for c in tbl_cols]:
-        return (f"INSERT INTO [{schema}].[{table}] "
-                f"VALUES ({','.join(['?'] * len(usable_cols))})")
+    # Warn or break on errors
     if missing_cols or extra_cols:
         print(f"\033[1;33mExpected columns (from table): {tbl_cols}\033[0m")
         print(f"\033[1;33mActual columns (from data): {src_cols}\033[0m")
+        print(f"\033[1;33mMissing columns: {missing_cols}\033[0m")
+        print(f"\033[1;33mUnexpected columns: {extra_cols}\033[0m")
         if strict_mode: raise Exception(f"Expected columns are missing or unexpected columns are present!")
+    # Exact match, no need to name columns
+    elif [c.lower() for c in src_cols] == [c.lower() for c in tbl_cols]:
+        return (f"INSERT INTO [{schema}].[{table}] "
+                f"VALUES ({','.join(['?'] * len(usable_cols))})")
     # Otherwise name columns - remember you can have identical columns in the wrong order
-    cols_str = ','.join([f"[{c}]" for c in usable_cols])
-    return (f"INSERT INTO [{schema}].[{table}]({cols_str}) "
-            f"VALUES ({','.join(['?'] * len(usable_cols))})")
+    else:
+        print(f"\033[1;33mUsing named INSERTs (might be slower - ensure columns are identical to avoid this)...\033[0m")
+        cols_str = ','.join([f"[{c}]" for c in usable_cols])
+        return (f"INSERT INTO [{schema}].[{table}]({cols_str}) "
+                f"VALUES ({','.join(['?'] * len(usable_cols))})")
