@@ -2,6 +2,7 @@ import os, sys, csv
 import struct
 import pyodbc
 import math, itertools
+import subprocess
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -25,25 +26,21 @@ def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", strict_
     table_name = task.table_name
     schema = task.schema
     database = task.database
-    # Initialise database
-    conn = pyodbc_conn(database)
-    cur = conn.cursor()
-    cur.fast_executemany = True
+    # Check whether to wipe existing table
+    if if_exists == "replace":
+        truncate(table_name, schema, database)
+    elif if_exists != "append":
+        raise Exception("if_exists must be 'replace' or 'append'!")
     # Read file
     print(f"Reading '{local_fn}'...")
     with open(local_fn, "r", encoding = encoding) as f:
         reader = csv.reader(f)
         src_cols = next(reader) + ["task_name"]
         query = make_insert_query(src_cols, table_name, schema, database, strict_mode)
-        if if_exists == "replace":
-            cur.execute(f"SELECT COUNT(*) FROM [{schema}].[{table_name}]")
-            old_row_count = cur.fetchone()[0]
-            if old_row_count:
-                print(f"\033[1;33mTruncating {old_row_count} existing rows from [{schema}].[{table_name}]...\033[0m")
-                cur.execute(f"TRUNCATE TABLE [{schema}].[{table_name}]")
-        elif if_exists != "append":
-            raise Exception("if_exists must be 'replace' or 'append'!")
         print(f"Loading data into [{schema}].[{table_name}]...")
+        conn = pyodbc_conn(database)
+        cur = conn.cursor()
+        cur.fast_executemany = True
         row_count = 0
         start = datetime.now()
         while True:
@@ -174,6 +171,63 @@ def query_to_df(query, database):
     df = pd.DataFrame(raw)
     print(f"{len(df)} rows in results...")
     return df
+
+def truncate(table_name, schema, database, commit = True):
+    conn = pyodbc_conn(database)
+    cur = conn.cursor()
+    cur.execute(f"SELECT COUNT(*) FROM [{schema}].[{table_name}]")
+    old_row_count = cur.fetchone()[0]
+    if old_row_count:
+        print(f"\033[1;33mTruncating {old_row_count} existing rows from [{schema}].[{table_name}]...\033[0m")
+        cur.execute(f"TRUNCATE TABLE [{schema}].[{table_name}]")
+        if commit: cur.commit()
+
+
+#===============#
+#   bcp-based   #
+#===============#
+# bcp is very fast, but cannot use Active Directory authentication
+def bcp_loader(local_fn, task, if_exists = "append", encoding = "utf-8", strict_mode = True, batch_size = 10000):
+    task_name = task.task_name
+    table_name = task.table_name
+    schema = task.schema
+    database = task.database
+    # Check secrets
+    DB_SERVER = os.getenv("DB_SERVER")
+    DB_UID = os.getenv("DB_UID")
+    DB_PASS = os.getenv("DB_PASS")
+    if not (DB_SERVER and DB_UID and DB_PASS):
+        raise Exception("bcp_loader() requires DB_SERVER, DB_UID, and DB_PASS to be set in .env! Read the 'Setting secrets' section in the README.")
+    # Check whether to wipe existing table
+    if if_exists == "replace":
+        truncate(table_name, schema, database)
+    elif if_exists != "append":
+        raise Exception("if_exists must be 'replace' or 'append'!")
+    # Read file
+    print(f"Reading '{local_fn}'...")
+    temp_fn = "bcp_temp.csv"
+    df = pd.read_csv(local_fn)
+    df.to_csv(temp_fn, index = False) # Read and save to use Pandas to clean CSV file
+    # Load
+    res = subprocess.run([
+        "bcp", f"[{schema}].[{table_name}]",
+        "IN", temp_fn,
+        "-S", DB_SERVER,
+        "-d", database,
+        "-U", DB_UID,
+        "-P", DB_PASS,
+        "-b", str(batch_size),
+        "-F", "2",
+        "-t", ",",
+        "-c"
+    ])
+    os.remove(temp_fn) # Clean up
+    try:
+        res.check_returncode()
+        return len(df)
+    except subprocess.CalledProcessError:
+        print(f"\033[1;31mbcp failed!\033[0m")
+        raise
 
 
 #======================#
