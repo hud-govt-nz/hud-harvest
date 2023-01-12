@@ -32,7 +32,7 @@ def download(src_url, dst_fn):
             elif src_size == dst_size:
                 print("Local file of the same size already exists, ignoring.")
                 return
-            else:
+            elif "Last-Modified" in res.headers:
                 src_date = datetime.strptime(res.headers["Last-Modified"], "%a, %d %b %Y %H:%M:%S %Z")
                 dst_date = datetime.fromtimestamp(dst.stat().st_mtime)
                 print(f"Local file exists ({dst_size} bytes, last modified {dst_date}), "
