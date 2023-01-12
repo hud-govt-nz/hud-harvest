@@ -10,11 +10,10 @@ from sqltools import run_query, pyodbc_conn
 
 class DBLoadTask:
     def __init__(self, task_name, schema = "source", database = "property"):
-        conn = pyodbc_conn(database)
-        self.conn = conn
+        self.conn = pyodbc_conn(database)
         self.name = task_name
-        self.database = database
         self.schema = schema
+        self.database = database
         self.get_log()
 
     # Try to retrieve log information (will return None if it doesn't exist yet)
