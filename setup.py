@@ -6,7 +6,11 @@ setup(
     url="https://github.com/hud-govt-nz/hud-harvest",
     author="Keith Ng",
     author_email="keith.ng@hud.govt.nz",
-    packages=["tasker", "scraper", "seleniumscraper", "sqltools", "mongotools"],
+    packages=[
+        "scraper", "seleniumscraper",
+        "sqltools", "mongotools",
+        "dbloader", "taskmaster"
+    ],
     include_package_data=True,
     install_requires=[
         "hudkeep",

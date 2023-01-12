@@ -8,7 +8,7 @@ from datetime import datetime
 from hudkeep import store, retrieve, local_props, blob_props
 from sqltools import run_query, pyodbc_conn
 
-class Task:
+class DBLoadTask:
     def __init__(self, task_name, schema = "source", database = "property"):
         conn = pyodbc_conn(database)
         self.conn = conn
