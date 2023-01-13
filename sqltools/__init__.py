@@ -182,6 +182,32 @@ def truncate(table_name, schema, database, commit = True):
         cur.execute(f"TRUNCATE TABLE [{schema}].[{table_name}]")
         if commit: cur.commit()
 
+def get_col_types(table_name, schema, database):
+    query = f"""
+        SELECT COLUMN_NAME, DATA_TYPE
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = '{schema}'
+        AND TABLE_NAME = '{table_name}'
+        ORDER BY ORDINAL_POSITION
+    """
+    cur = run_query(query, database, "read")
+    cols_types = dict(cur.fetchall())
+    date_cols = []
+    for k,v in cols_types.items():
+        if v in ("bigint", "numeric", "bit", "smallint", "decimal", "smallmoney", "int", "tinyint", "money"):
+            v = "Int64"
+        elif v in ("float", "real"):
+            v = "Float64"
+        elif v in ("date", "datetimeoffset", "datetime2", "smalldatetime", "datetime", "time"):
+            v = "str"
+            date_cols.append(k) # Dates can't be parsed directly, should be defined as strings then passed onto parse_dates
+        elif v in ("char", "varchar", "text", "nchar", "nvarchar", "ntext"):
+            v = "str"
+        else:
+            raise Exception(f"I don't know how to parse column type '{v}' for column '{k}'!")
+        cols_types[k] = v
+    return cols_types, date_cols
+
 
 #===============#
 #   bcp-based   #
@@ -203,11 +229,14 @@ def bcp_loader(local_fn, task, if_exists = "append", delimiter = "|", encoding =
         truncate(table_name, schema, database)
     elif if_exists != "append":
         raise Exception("if_exists must be 'replace' or 'append'!")
-    # Read file
+    # Read/clean file
     print(f"Reading '{local_fn}'...")
     temp_fn = "bcp_temp.csv"
-    df = pd.read_csv(local_fn)
+    start = datetime.now()
+    col_types, date_cols = get_col_types(table_name, schema, database) # Use datatypes from table
+    df = pd.read_csv(local_fn, dtype = col_types, parse_dates = None) # Don't parse dates, bcp will take care of it
     df.to_csv(temp_fn, sep = delimiter, index = False) # Read and save to use Pandas to clean CSV file
+    print(f"File cleaning took {datetime.now() - start}s...")
     # Load
     res = subprocess.run([
         "bcp", f"[{schema}].[{table_name}]",
