@@ -187,7 +187,7 @@ def truncate(table_name, schema, database, commit = True):
 #   bcp-based   #
 #===============#
 # bcp is very fast, but cannot use Active Directory authentication
-def bcp_loader(local_fn, task, if_exists = "append", encoding = "utf-8", strict_mode = True, batch_size = 10000):
+def bcp_loader(local_fn, task, if_exists = "append", delimiter = "|", encoding = "utf-8", strict_mode = True, batch_size = 10000):
     task_name = task.task_name
     table_name = task.table_name
     schema = task.schema
@@ -207,7 +207,7 @@ def bcp_loader(local_fn, task, if_exists = "append", encoding = "utf-8", strict_
     print(f"Reading '{local_fn}'...")
     temp_fn = "bcp_temp.csv"
     df = pd.read_csv(local_fn)
-    df.to_csv(temp_fn, index = False) # Read and save to use Pandas to clean CSV file
+    df.to_csv(temp_fn, sep = delimiter, index = False) # Read and save to use Pandas to clean CSV file
     # Load
     res = subprocess.run([
         "bcp", f"[{schema}].[{table_name}]",
@@ -218,7 +218,7 @@ def bcp_loader(local_fn, task, if_exists = "append", encoding = "utf-8", strict_
         "-P", DB_PASS,
         "-b", str(batch_size),
         "-F", "2",
-        "-t", ",",
+        "-t", delimiter,
         "-c"
     ])
     os.remove(temp_fn) # Clean up
