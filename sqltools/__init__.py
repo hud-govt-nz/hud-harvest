@@ -182,32 +182,6 @@ def truncate(table_name, schema, database, commit = True):
         cur.execute(f"TRUNCATE TABLE [{schema}].[{table_name}]")
         if commit: cur.commit()
 
-def get_col_types(table_name, schema, database):
-    query = f"""
-        SELECT COLUMN_NAME, DATA_TYPE
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = '{schema}'
-        AND TABLE_NAME = '{table_name}'
-        ORDER BY ORDINAL_POSITION
-    """
-    cur = run_query(query, database, "read")
-    cols_types = dict(cur.fetchall())
-    date_cols = []
-    for k,v in cols_types.items():
-        if v in ("bigint", "numeric", "bit", "smallint", "decimal", "smallmoney", "int", "tinyint", "money"):
-            v = "Int64"
-        elif v in ("float", "real"):
-            v = "Float64"
-        elif v in ("date", "datetimeoffset", "datetime2", "smalldatetime", "datetime", "time"):
-            v = "str"
-            date_cols.append(k) # Dates can't be parsed directly, should be defined as strings then passed onto parse_dates
-        elif v in ("char", "varchar", "text", "nchar", "nvarchar", "ntext"):
-            v = "str"
-        else:
-            raise Exception(f"I don't know how to parse column type '{v}' for column '{k}'!")
-        cols_types[k] = v
-    return cols_types, date_cols
-
 
 #===============#
 #   bcp-based   #
@@ -233,8 +207,9 @@ def bcp_loader(local_fn, task, if_exists = "append", delimiter = "|", encoding =
     print(f"Reading '{local_fn}'...")
     temp_fn = "bcp_temp.csv"
     start = datetime.now()
-    col_types, date_cols = get_col_types(table_name, schema, database) # Use datatypes from table
-    df = pd.read_csv(local_fn, dtype = col_types, parse_dates = None) # Don't parse dates, bcp will take care of it
+    cols = get_columns(table_name, schema, database) # Use datatypes from table
+    dtype, parse_dates = sql_types_to_pandas_types(cols)
+    df = pd.read_csv(local_fn, dtype = dtype, parse_dates = None) # Don't parse dates, bcp will take care of it
     df.to_csv(temp_fn, sep = delimiter, index = False) # Read and save to use Pandas to clean CSV file
     print(f"File cleaning took {datetime.now() - start}s...")
     # Load
@@ -293,16 +268,41 @@ def sqlalchemy_loader(local_fn, task, encoding = "utf-8", strict_mode = True, if
 #=============#
 #   Columns   #
 #=============#
-def get_columns(table, schema, database):
-    query = f"SELECT TOP(1) * FROM [{schema}].[{table}]"
-    cur = run_query(query, database, mode = "read")
-    return [d[0] for d in cur.description]
+def get_columns(table_name, schema, database):
+    query = f"""
+        SELECT COLUMN_NAME, DATA_TYPE
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = '{schema}'
+        AND TABLE_NAME = '{table_name}'
+        ORDER BY ORDINAL_POSITION
+    """
+    cur = run_query(query, database, "read")
+    cols = dict(cur.fetchall())
+    return cols
+
+def sql_types_to_pandas_types(cols):
+    dtype = {}
+    parse_dates = []
+    for k,v in cols.items():
+        if v in ("bigint", "numeric", "bit", "smallint", "decimal", "smallmoney", "int", "tinyint", "money"):
+            v = "Int64"
+        elif v in ("float", "real"):
+            v = "Float64"
+        elif v in ("date", "datetimeoffset", "datetime2", "smalldatetime", "datetime", "time"):
+            v = "str"
+            parse_dates.append(k) # Dates can't be parsed directly, should be defined as strings then passed onto parse_dates
+        elif v in ("char", "varchar", "text", "nchar", "nvarchar", "ntext"):
+            v = "str"
+        else:
+            raise Exception(f"I don't know how to parse column type '{v}' for column '{k}'!")
+        dtype[k] = v
+    return dtype, parse_dates
 
 def check_columns(src_cols, table, schema, database, strict_mode = True):
     return make_insert_query(src_cols, table, schema, database, strict_mode = True) == None
 
 def make_insert_query(src_cols, table, schema, database, strict_mode = True):
-    tbl_cols = get_columns(table, schema, database)
+    tbl_cols = get_columns(table, schema, database).keys()
     src_cols = list(src_cols)
     missing_cols = [c for c in tbl_cols if c not in src_cols]
     extra_cols = [c for c in src_cols if c not in tbl_cols]
