@@ -210,9 +210,10 @@ class Taskmaster:
                 self.log_msg(f"\n{t['script']} failed!", "error")
                 raise
         except:
-            if proc.returncode is None: proc.terminate() # Only terminate if it hasn't finished
+            if proc.returncode is None: # Only terminate if it hasn't finished
+                proc.terminate()
+                t["status"] = "terminated"
             await proc.wait() # Wait for subprocess to terminate
-            t["status"] = "terminated"
         # Checkout task
         t["end"] = datetime.now()
         self.log_task(t)
