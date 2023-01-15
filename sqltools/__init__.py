@@ -40,6 +40,28 @@ def query_to_df(query, database):
     print(f"{len(df)} rows in results...")
     return df
 
+def insert(row, table_name, schema, database, commit = True):
+    conn = pyodbc_conn(database)
+    cur = conn.cursor()
+    cur.execute(
+        f"INSERT INTO [{schema}].[{table_name}]"
+        f"({','.join(row.keys())}) "
+        f"VALUES({','.join(['?'] * len(row))})",
+        *row.values())
+    if commit: cur.commit()
+
+def update(where, set, table_name, schema, database, commit = True):
+    conn = pyodbc_conn(database)
+    cur = conn.cursor()
+    set_str = [f"{k}=?" for k,v in set.items()]
+    where_str = [f"{k}=?" for k,v in where.items()]
+    cur.execute(
+        f"UPDATE [{schema}].[{table_name}] "
+        f"SET {','.join(set_str)} "
+        f"WHERE {','.join(where_str)}",
+        *set.values(), *where.values())
+    if commit: cur.commit()
+
 def truncate(table_name, schema, database, commit = True):
     conn = pyodbc_conn(database)
     cur = conn.cursor()

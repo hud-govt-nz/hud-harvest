@@ -3,7 +3,7 @@ import os, sys, argparse, pathlib, logging
 import re, json, asyncio, hashlib
 import pandas as pd
 from datetime import datetime
-from sqltools import run_query, pyodbc_conn
+from sqltools import insert, update
 
 ROOT_PATH = pathlib.Path(__file__).parent.absolute()
 STATUSES = {
@@ -31,8 +31,8 @@ class Taskmaster:
         self.jobs = jobs
         self.run_name = run_name
         self.scripts_path = pathlib.Path(scripts_path)
-        if log_db:
-            self.conn = pyodbc_conn(log_db)
+        self.log_db = log_db
+        self.create_run_log()
 
     @staticmethod
     def parse_args():
@@ -62,7 +62,19 @@ class Taskmaster:
     # Runs all tasks until no ready tasks are available
     def run(self, max_tasks = 8, forced = False, debug = False, only_run = None):
         start = datetime.now()
+        run_status = "running"
         tasks = self.tasks = self.list_tasks(self.jobs, only_run)
+        self.set_run_log({
+            "run_args": str({
+                "max_tasks": max_tasks,
+                "forced": forced,
+                "debug": debug,
+                "only_run": only_run
+            }),
+            "status": run_status,
+            "jobs_count": len(self.jobs),
+            "tasks_count": len(self.tasks)
+        })
         print_tree(tasks, clear = False) # Print once to allocate lines
         try:
             while True:
@@ -79,9 +91,21 @@ class Taskmaster:
                             t["status"] = "skipped"
                     print_tree(tasks)
                     self.log_msg(f"\nFinished in {datetime.now() - start}s.")
+                    run_status = "finished"
                     break
         except KeyboardInterrupt:
+            run_status = "aborted"
             self.log_msg("Aborted.")
+        except:
+            run_status = "crashed"
+        finally:
+            self.set_run_log({
+                "status": run_status,
+                "tasks_succeeded": sum([self.tasks == "success" for t in tasks]),
+                "tasks_failed": sum([self.tasks == "failed" for t in tasks]),
+                "tasks_skipped": sum([self.tasks == "skipped" for t in tasks]),
+                "finished_at": datetime.now()
+            })
 
     # Break jobs down into interdependent tasks
     def list_tasks(self, jobs, only_run = None):
@@ -213,6 +237,22 @@ class Taskmaster:
     #=============#
     def log_msg(self, message, level = "info"):
         logging.info(message)
+
+    def create_run_log(self):
+        if not self.log_db: return
+        row = {
+            "run_name": self.run_name,
+            "status": "started",
+            "started_at": datetime.now(),
+        }
+        insert(row, **self.log_db)
+
+    def set_run_log(self, set):
+        if not self.log_db: return
+        where = {
+            "run_name": self.run_name
+        }
+        update(where, set, **self.log_db)
 
     def log_task(self, t):
         # df = pd.read_csv(f"{ROOT_PATH}/log.csv")
