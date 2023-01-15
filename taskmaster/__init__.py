@@ -213,7 +213,7 @@ class Taskmaster:
                 print(f"\n\033[1;31m{t['script']} failed!\033[0m")
                 raise
         except:
-            proc.terminate()
+            if proc.returncode is None: proc.terminate() # Only terminate if it hasn't finished
             await proc.wait() # Wait for subprocess to terminate
             t["status"] = "terminated"
         # Checkout task
