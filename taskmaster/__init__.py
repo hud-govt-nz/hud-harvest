@@ -45,10 +45,6 @@ class Taskmaster:
                             action = "store_const",
                             const = True,
                             help = "Run even if input hashes are unchanged.")
-        parser.add_argument("--debug",
-                            action = "store_const",
-                            const = True,
-                            help = "Halt and catch fire on errors.")
         parser.add_argument("--only-run",
                             metavar = "O",
                             nargs = "+",
@@ -60,7 +56,7 @@ class Taskmaster:
     #   Task management   #
     #=====================#
     # Runs all tasks until no ready tasks are available
-    def run(self, max_tasks = 8, forced = False, debug = False, only_run = None):
+    def run(self, max_tasks = 8, forced = False, only_run = None):
         start = datetime.now()
         run_status = "running"
         tasks = self.tasks = self.list_tasks(self.jobs, only_run)
@@ -68,7 +64,6 @@ class Taskmaster:
             "run_args": str({
                 "max_tasks": max_tasks,
                 "forced": forced,
-                "debug": debug,
                 "only_run": only_run
             }),
             "status": run_status,
@@ -80,7 +75,7 @@ class Taskmaster:
             while True:
                 ready = [t for t in tasks if self.is_ready(t, forced)]
                 if ready:
-                    curr_tasks = [self.run_task(t, debug) for t in ready]
+                    curr_tasks = [self.run_task(t, forced) for t in ready]
                     operation = gather_with_concurrency(curr_tasks, max_tasks)
                     res = asyncio.run(operation)
                 else:
@@ -190,7 +185,7 @@ class Taskmaster:
     #   Subprocess   #
     #================#
     # Run a single task as a subprocess
-    async def run_task(self, t, debug = False):
+    async def run_task(self, t, forced = False):
         # Initialise task
         t["start"] = datetime.now()
         t["status"] = "running"
@@ -209,8 +204,8 @@ class Taskmaster:
         except AssertionError:
             t["status"] = "failed"
             t["errors"] = stderr.split("\n")
+            if not forced:
             self.print_status()
-            if debug:
                 dump_task(args, stdout, stderr)
                 self.log_msg(f"\n{t['script']} failed!", "error")
                 raise
