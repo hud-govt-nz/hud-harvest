@@ -199,23 +199,26 @@ class Taskmaster:
         pipe = asyncio.subprocess.PIPE
         args = self.prep_args(t)
         proc = await asyncio.create_subprocess_exec(*args, stdout = pipe, stderr = pipe)
-        stdout, stderr = [s.decode().strip() for s in await proc.communicate()]
         # Process status/output
         try:
+            stdout, stderr = [s.decode().strip() for s in await proc.communicate()]
             assert proc.returncode == 0
             r = read_result(stdout)
             t.update(r) # All outputs are saved to the task
-            print_tree(self.tasks)
         except AssertionError:
             t["status"] = "failed"
             t["errors"] = stderr.split("\n")
-            print_tree(self.tasks)
             if debug:
                 dump_task(args, stdout, stderr)
                 print(f"\n\033[1;31m{t['script']} failed!\033[0m")
                 raise
+        except:
+            proc.terminate()
+            await proc.wait() # Wait for subprocess to terminate
+            t["status"] = "terminated"
         # Checkout task
         t["end"] = datetime.now()
+        print_tree(self.tasks)
         self.log_task(t)
         return t
 
