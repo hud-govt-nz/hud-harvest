@@ -194,11 +194,11 @@ class Taskmaster:
         # Initialise task
         t["start"] = datetime.now()
         t["status"] = "running"
-        self.print_status()
         # Run subprocess
         pipe = asyncio.subprocess.PIPE
         args = self.prep_args(t)
         proc = await asyncio.create_subprocess_exec(*args, stdout = pipe, stderr = pipe)
+        self.print_status() # Don't print status until the subprocess has been created
         # Process status/output
         try:
             stdout, stderr = [s.decode().strip() for s in await proc.communicate()]
