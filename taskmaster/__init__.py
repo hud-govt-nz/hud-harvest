@@ -94,6 +94,9 @@ class Taskmaster:
         except KeyboardInterrupt:
             print("\033[1;33mAborting...\033[0m")
             run_status = "aborted"
+        except AssertionError:
+            print("\033[1;31mHalting due to script error!\033[0m")
+            run_status = "halted"
         except:
             print("\033[1;31mCrashed!\033[0m")
             run_status = "crashed"
@@ -107,7 +110,6 @@ class Taskmaster:
                 "finished_at": datetime.now()
             })
             print(f"\n\033[1m{run_status.upper()}\033[0m in {datetime.now() - start}s.")
-
 
     # Break jobs down into interdependent tasks
     def list_tasks(self, jobs, only_run = None):
@@ -200,18 +202,17 @@ class Taskmaster:
         stdout, stderr = [s.decode().strip() for s in await proc.communicate()]
         # Process status/output
         try:
-            if proc.returncode != 0:
-                raise Exception(f"{t['script']} failed!")
+            assert proc.returncode == 0
             r = read_result(stdout)
             t.update(r) # All outputs are saved to the task
             print_tree(self.tasks)
-        except:
+        except AssertionError:
             t["status"] = "failed"
             t["errors"] = stderr.split("\n")
             print_tree(self.tasks)
             if debug:
                 dump_task(args, stdout, stderr)
-                print_divider("Traceback")
+                print(f"\n\033[1;31m{t['script']} failed!\033[0m")
                 raise
         # Checkout task
         t["end"] = datetime.now()
