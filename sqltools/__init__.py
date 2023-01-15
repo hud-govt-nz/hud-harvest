@@ -142,8 +142,12 @@ def sql_types_to_pandas_types(cols):
 # https://github.com/AzureAD/azure-activedirectory-library-for-python/wiki/Connect-to-Azure-SQL-Database
 # https://docs.sqlalchemy.org/en/14/dialects/mssql.html#connecting-to-databases-with-access-tokens
 def get_conn_token():
-    creds = AzureCliCredential() # Use default credentials - use `az cli login` to set this up
-    raw_token = creds.get_token("https://database.windows.net/").token.encode("utf-16-le")
+    token = os.getenv("AZURE_TOKEN")
+    if not token:
+        creds = AzureCliCredential() # Use default credentials - use `az cli login` to set this up
+        token = creds.get_token("https://database.windows.net/").token
+        os.environ["AZURE_TOKEN"] = token
+    raw_token = token.encode("utf-16-le")
     token_struct = struct.pack(f"<I{len(raw_token)}s", len(raw_token), raw_token)
     return { 1256: token_struct } # Connection option for access tokens, as defined in msodbcsql.h
 
