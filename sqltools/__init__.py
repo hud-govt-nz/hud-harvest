@@ -49,6 +49,7 @@ def insert(row, table_name, schema, database, commit = True):
         f"VALUES({','.join(['?'] * len(row))})",
         *row.values())
     if commit: cur.commit()
+    return cur.rowcount
 
 def update(where, set, table_name, schema, database, commit = True):
     conn = pyodbc_conn(database)
@@ -61,6 +62,7 @@ def update(where, set, table_name, schema, database, commit = True):
         f"WHERE {','.join(where_str)}",
         *set.values(), *where.values())
     if commit: cur.commit()
+    return cur.rowcount
 
 def truncate(table_name, schema, database, commit = True):
     conn = pyodbc_conn(database)
