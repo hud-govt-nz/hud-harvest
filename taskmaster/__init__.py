@@ -75,7 +75,7 @@ class Taskmaster:
             "jobs_count": len(self.jobs),
             "tasks_count": len(self.tasks)
         })
-        print_tree(tasks, clear = False) # Print once to allocate lines
+        self.print_status(clear = False) # Print once to allocate lines
         try:
             while True:
                 ready = [t for t in tasks if self.is_ready(t, forced)]
@@ -88,7 +88,7 @@ class Taskmaster:
                     for t in tasks:
                         if t["status"] == "unassigned":
                             t["status"] = "skipped"
-                    print_tree(tasks)
+                    self.print_status()
                     run_status = "finished"
                     break
         except KeyboardInterrupt:
@@ -194,7 +194,7 @@ class Taskmaster:
         # Initialise task
         t["start"] = datetime.now()
         t["status"] = "running"
-        print_tree(self.tasks)
+        self.print_status()
         # Run subprocess
         pipe = asyncio.subprocess.PIPE
         args = self.prep_args(t)
@@ -205,9 +205,11 @@ class Taskmaster:
             assert proc.returncode == 0
             r = read_result(stdout)
             t.update(r) # All outputs are saved to the task
+            self.print_status()
         except AssertionError:
             t["status"] = "failed"
             t["errors"] = stderr.split("\n")
+            self.print_status()
             if debug:
                 dump_task(args, stdout, stderr)
                 print(f"\n\033[1;31m{t['script']} failed!\033[0m")
@@ -218,7 +220,6 @@ class Taskmaster:
             t["status"] = "terminated"
         # Checkout task
         t["end"] = datetime.now()
-        print_tree(self.tasks)
         self.log_task(t)
         return t
 
@@ -242,6 +243,9 @@ class Taskmaster:
     #=============#
     #   Logging   #
     #=============#
+    def print_status(self, clear = True):
+        print_tree(self.tasks, clear)
+
     def log_msg(self, message, level = "info"):
         logging.info(message)
 
