@@ -89,14 +89,15 @@ class Taskmaster:
                         if t["status"] == "unassigned":
                             t["status"] = "skipped"
                     print_tree(tasks)
-                    self.log_msg(f"\nFinished in {datetime.now() - start}s.")
                     run_status = "finished"
                     break
         except KeyboardInterrupt:
+            print("\033[1;33mAborting...\033[0m")
             run_status = "aborted"
-            self.log_msg("Aborted.")
         except:
+            print("\033[1;31mCrashed!\033[0m")
             run_status = "crashed"
+            raise
         finally:
             self.set_run_log({
                 "status": run_status,
@@ -105,6 +106,8 @@ class Taskmaster:
                 "tasks_skipped": sum([t["status"] == "skipped" for t in tasks]),
                 "finished_at": datetime.now()
             })
+            print(f"\n\033[1m{run_status.upper()}\033[0m in {datetime.now() - start}s.")
+
 
     # Break jobs down into interdependent tasks
     def list_tasks(self, jobs, only_run = None):
