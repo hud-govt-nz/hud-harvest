@@ -3,7 +3,7 @@ import os, sys, argparse, pathlib, logging
 import re, json, asyncio, hashlib
 import pandas as pd
 from datetime import datetime
-from sqltools import insert, update
+from sqltools import insert, update, delete
 
 ROOT_PATH = pathlib.Path(__file__).parent.absolute()
 STATUSES = {
@@ -240,6 +240,10 @@ class Taskmaster:
 
     def create_run_log(self):
         if not self.log_db: return
+        where = { "run_name": self.run_name }
+        row_count = delete(where, **self.log_db)
+        if row_count:
+            print(f"\033[1;33mReplacing existing log for {self.run_name}...\033[0m")
         row = {
             "run_name": self.run_name,
             "status": "started",
