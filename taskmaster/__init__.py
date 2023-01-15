@@ -81,7 +81,6 @@ class Taskmaster:
                 ready = [t for t in tasks if self.is_ready(t, forced)]
                 if ready:
                     curr_tasks = [self.run_task(t, debug) for t in ready]
-                    print_tree(tasks) # Update once all the ready tasks have been assigned
                     operation = gather_with_concurrency(curr_tasks, max_tasks)
                     res = asyncio.run(operation)
                 else:
@@ -190,6 +189,7 @@ class Taskmaster:
         # Initialise task
         t["start"] = datetime.now()
         t["status"] = "running"
+        print_tree(self.tasks)
         # Run subprocess
         pipe = asyncio.subprocess.PIPE
         args = self.prep_args(t)
