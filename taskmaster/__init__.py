@@ -101,9 +101,9 @@ class Taskmaster:
         finally:
             self.set_run_log({
                 "status": run_status,
-                "tasks_succeeded": sum([self.tasks == "success" for t in tasks]),
-                "tasks_failed": sum([self.tasks == "failed" for t in tasks]),
-                "tasks_skipped": sum([self.tasks == "skipped" for t in tasks]),
+                "tasks_succeeded": sum([t["status"] == "success" for t in tasks]),
+                "tasks_failed": sum([t["status"] == "failed" for t in tasks]),
+                "tasks_skipped": sum([t["status"] == "skipped" for t in tasks]),
                 "finished_at": datetime.now()
             })
 
