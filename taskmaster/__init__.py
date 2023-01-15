@@ -17,11 +17,6 @@ STATUSES = {
     "reset": "\033[0m"
 }
 
-# Make log buffer
-logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s",
-                    datefmt="%Y-%m-%d %H:%M:%S",
-                    level = logging.INFO)
-
 # The top-level definition is in jobs.json, which is a list of jobs
 # Each job has a name, job-wide parameters, and a list of steps
 # Each step is a task, or a list of tasks
@@ -32,6 +27,8 @@ class Taskmaster:
         self.run_name = run_name
         self.scripts_path = pathlib.Path(scripts_path)
         self.log_db = log_db
+        self.log_msgs = []
+        self.screen = ""
         self.create_run_log()
 
     @staticmethod
@@ -70,7 +67,7 @@ class Taskmaster:
             "jobs_count": len(self.jobs),
             "tasks_count": len(self.tasks)
         })
-        self.print_status(clear = False) # Print once to allocate lines
+        self.print_status() # Print once to allocate lines
         try:
             while True:
                 ready = [t for t in tasks if self.is_ready(t, forced)]
@@ -186,37 +183,29 @@ class Taskmaster:
     #================#
     # Run a single task as a subprocess
     async def run_task(self, t, forced = False):
-        # Initialise task
-        t["start"] = datetime.now()
-        t["status"] = "running"
-        # Run subprocess
         pipe = asyncio.subprocess.PIPE
-        args = self.prep_args(t)
+        args = t["args"] = self.prep_args(t)
         proc = await asyncio.create_subprocess_exec(*args, stdout = pipe, stderr = pipe)
-        self.print_status() # Don't print status until the subprocess has been created
-        # Process status/output
+        self.start_task(t) # Don't start the task until the subprocess has been created
         try:
             stdout, stderr = [s.decode().strip() for s in await proc.communicate()]
             assert proc.returncode == 0
             r = read_result(stdout)
             t.update(r) # All outputs are saved to the task
-            self.print_status()
+            self.end_task(t)
         except AssertionError:
             t["status"] = "failed"
             t["errors"] = stderr.split("\n")
+            self.end_task(t)
             if not forced:
-            self.print_status()
-                dump_task(args, stdout, stderr)
-                self.log_msg(f"\n{t['script']} failed!", "error")
+                self.dump = dump_task(args, stdout, stderr)
                 raise
         except:
             if proc.returncode is None: # Only terminate if it hasn't finished
                 proc.terminate()
                 t["status"] = "terminated"
             await proc.wait() # Wait for subprocess to terminate
-        # Checkout task
-        t["end"] = datetime.now()
-        self.log_task(t)
+            self.end_task(t)
         return t
 
     # Prepare arguments for subprocesses
@@ -239,19 +228,23 @@ class Taskmaster:
     #=============#
     #   Logging   #
     #=============#
-    def print_status(self, clear = True):
-        print_tree(self.tasks, clear)
+    def print_status(self):
+        if self.screen:
+            for l in self.screen.split("\n"):
+                print('\033[1A', end='\x1b[2K')
+        self.screen = ""
+        if hasattr(self, "tasks"):
+            self.screen += draw_tree(self.tasks) + "\n"
+        if hasattr(self, "log_msg"):
+            self.screen += draw_message_box(self.log_msgs) + "\n"
+        if hasattr(self, "dump"):
+            self.screen += self.dump
+        print(self.screen)
 
     def log_msg(self, message, level = "info"):
         message = message.strip()
-        if level == "bold":
-            print(f"\033[1m{message}\033[0m")
-        elif level == "error":
-            print(f"\033[1;31m{message}\033[0m")
-        elif level == "warning":
-            print(f"\033[1;33m{message}\033[0m")
-        else:
-            print(message)
+        self.log_msgs.append((datetime.now(), message, level))
+        self.print_status()
 
     def create_run_log(self):
         if not self.log_db: return
@@ -273,11 +266,17 @@ class Taskmaster:
         }
         update(where, set, **self.log_db)
 
-    def log_task(self, t):
-        # df = pd.read_csv(f"{ROOT_PATH}/log.csv")
-        # df = pd.concat([df, pd.DataFrame([t])])
-        # df[LOG_COLS].to_csv(LOG_FN, index=False)
-        return None
+    def start_task(self, t):
+        t["start"] = datetime.now()
+        t["status"] = "running"
+        self.log_msg(f"{t['script']} starting...")
+
+    def end_task(self, t):
+        t["end"] = datetime.now()
+        if t["status"] == "failed":
+            self.log_msg(f"{t['script']} failed!", "error")
+        else:
+            self.log_msg(f"{t['script']} finished with status {t['status']}.")
 
     def get_last_run(self, s):
         # df = pd.read_csv(f"{ROOT_PATH}/log.csv")
@@ -345,44 +344,60 @@ def hash_output(t):
             h = hashlib.md5(f.read())
             t["output_md5s"].append(h.hexdigest())
 
-def dump_task(args, stdout, stderr):
-    print_divider("stdout")
-    print(stdout)
-    print_divider("stderr")
-    print(stderr)
-    print_divider("Command")
-    safe_args = [re.sub(r"([\s])", r"\\\1", a) for a in args]
-    print(" ".join(safe_args))
-
-def print_divider(name, colour = "\033[1;36m"):
-    print(f"\n{colour}===  {name}  ===\033[0m")
-
 
 #===============#
 #  Report/logs  #
 #===============#
-def print_tree(tasks, clear = True):
-    top_level = [t for t in tasks if not t["parents"]]
-    if clear:
-        for i in range(0, len(tasks) + len(top_level)):
-            print('\033[1A', end='\x1b[2K')
-    for t in top_level:
-        print_branch(t, is_top = True)
+def dump_task(args, stdout, stderr):
+    safe_args = [re.sub(r"([\s])", r"\\\1", a) for a in args]
+    out = (
+        f"\n\033[1;36m===  stdout  ===\033[0m\n" +
+          stdout +
+          f"\n\033[1;36m===  stderr  ===\033[0m\n" +
+          stderr +
+          f"\n\033[1;36m===  Command  ===\033[0m\n" +
+          " ".join(safe_args))
+    return out
 
-# Recursive branch print used by print_tree()
-def print_branch(t, prefix = "", is_top = False, is_last = False):
+def draw_message_box(messages):
+    messages = messages[-6:]
+    out = "\033[1;30m=======================  Log  =======================\033[0m\n"
+    out += "\n" * (6 - len(messages))
+    for d,m,l in messages:
+        if l == "bold":
+            colour = "\033[1m"
+        elif l == "error":
+            colour = "\033[1;31m"
+        elif l == "warning":
+            colour = "\033[1;33m"
+        else:
+            colour = ""
+        out += f"{d:%H:%M:%S}: {colour}{m}\033[0m\n"
+    out += "\033[1;30m=====================================================\033[0m"
+    return out
+
+def draw_tree(tasks):
+    top_level = [t for t in tasks if not t["parents"]]
+    out = ""
+    for t in top_level:
+        out += draw_branch(t, is_top = True)
+    return out
+
+# Recursive branch print used by draw_tree()
+def draw_branch(t, prefix = "", is_top = False, is_last = False):
     script = t["script"]
     status = t["status"]
     colour = STATUSES.get(status) or STATUSES["default"]
-    body = f"{script} [{colour}{status}\033[0m]"
+    body = f"{script} [{colour}{status}\033[0m]\n"
     if is_top:
-        print(f"\n{body}")
+        out = f"\n{body}"
         prefix = ""
     elif is_last:
-        print(f"{prefix}└── {body}")
+        out = f"{prefix}└── {body}"
         prefix += "    "
     else:
-        print(f"{prefix}├── {body}")
+        out = f"{prefix}├── {body}"
         prefix += "│   "
     for c in t["children"]:
-        print_branch(c, prefix, is_last = c == t["children"][-1])
+        out += draw_branch(c, prefix, is_last = c == t["children"][-1])
+    return out
