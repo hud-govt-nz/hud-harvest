@@ -1,6 +1,6 @@
 #!/bin/python3
 import os, sys, argparse, pathlib, logging
-import re, json, time, asyncio, hashlib
+import re, json, asyncio, hashlib
 import pandas as pd
 from datetime import datetime
 from sqltools import run_query, pyodbc_conn
@@ -27,10 +27,10 @@ logging.basicConfig(format="%(asctime)s %(levelname)s: %(message)s",
 # Each step is a task, or a list of tasks
 # Each task is one R/Python script
 class Taskmaster:
-    def __init__(self, jobs, run_name = "test_run", script_path = "modules", log_db = None):
+    def __init__(self, jobs, run_name = "test_run", scripts_path = "modules", log_db = None):
         self.jobs = jobs
         self.run_name = run_name
-        self.script_path = pathlib.Path(script_path)
+        self.scripts_path = pathlib.Path(scripts_path)
         if log_db:
             self.conn = pyodbc_conn(log_db)
 
@@ -109,14 +109,14 @@ class Taskmaster:
     # Verifies a single task and compiles everything it needs to run
     def make_task(self, job, script):
         name = job.get("name") or "Unnamed"
-        fn = self.script_path.joinpath(script)
+        fn = self.scripts_path.joinpath(script)
         if not os.path.isfile(fn):
             raise Exception(f"Script '{fn}' not found (requested by job '{name}')!")
         return {
             "script": script,
             "job": job,
             "status": "unassigned", # All tasks start out unassigned
-            "last_run": get_last_run(script), # Fetch last run from log
+            "last_run": self.get_last_run(script), # Fetch last run from log
             "parents": [],
             "children": []
         }
@@ -194,7 +194,7 @@ class Taskmaster:
     # Prepare arguments for subprocesses
     def prep_args(self, t):
         name, ext = t["script"].lower().split(".")
-        script_fn = str(self.script_path.joinpath(t["script"]))
+        script_fn = str(self.scripts_path.joinpath(t["script"]))
         if ext == "py":
             args = ["pipenv", "run", "python", script_fn]
         elif ext == "r":

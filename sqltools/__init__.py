@@ -4,7 +4,6 @@ import pyodbc
 import math, itertools
 import subprocess
 import pandas as pd
-import numpy as np
 from datetime import datetime
 from sqlalchemy import event
 from sqlalchemy.engine import URL, create_engine
@@ -15,10 +14,128 @@ DB_CONN = os.getenv("DB_CONN")
 if not DB_CONN: raise Exception("DB_CONN not set in .env! Read the 'Setting secrets' section in the README.")
 
 
+#=================#
+#   Convenience   #
+#=================#
+def run_query(query, database, mode, verbose = False):
+    if verbose: print(f"Running query:", query)
+    start = datetime.now()
+    conn = pyodbc_conn(database)
+    cur = conn.cursor()
+    cur.execute(query)
+    if mode == "read": pass
+    elif mode == "write": cur.commit()
+    elif mode == "test": cur.rollback()
+    else: raise Exception("Mode must be 'read', 'write', or 'test'!")
+    if verbose: print(f"Query completed in {datetime.now() - start}s.")
+    return cur
+
+def query_to_df(query, database):
+    print("Executing query...")
+    cur = run_query(query, database, mode = "read")
+    print("Extracting results...")
+    cols = [c[0] for c in cur.description]
+    raw = [dict(zip(cols, r)) for r in cur.fetchall()]
+    df = pd.DataFrame(raw)
+    print(f"{len(df)} rows in results...")
+    return df
+
+def truncate(table_name, schema, database, commit = True):
+    conn = pyodbc_conn(database)
+    cur = conn.cursor()
+    cur.execute(f"SELECT COUNT(*) FROM [{schema}].[{table_name}]")
+    old_row_count = cur.fetchone()[0]
+    if old_row_count:
+        print(f"\033[1;33mTruncating {old_row_count} existing rows from [{schema}].[{table_name}]...\033[0m")
+        cur.execute(f"TRUNCATE TABLE [{schema}].[{table_name}]")
+        if commit: cur.commit()
+
+# Generate insert query for bulk inserts
+def make_insert_query(src_cols, table_name, schema, database, strict_mode = True):
+    tbl_cols = get_columns(table_name, schema, database).keys()
+    src_cols = list(src_cols)
+    missing_cols = [c for c in tbl_cols if c not in src_cols]
+    extra_cols = [c for c in src_cols if c not in tbl_cols]
+    usable_cols = [c for c in src_cols if c in tbl_cols]
+    # Warn or break on errors
+    if missing_cols or extra_cols:
+        print(f"\033[1;33mExpected columns (from table): {tbl_cols}\033[0m")
+        print(f"\033[1;33mActual columns (from data): {src_cols}\033[0m")
+        print(f"\033[1;33mMissing columns: {missing_cols}\033[0m")
+        print(f"\033[1;33mUnexpected columns: {extra_cols}\033[0m")
+        if strict_mode: raise Exception(f"Expected columns are missing or unexpected columns are present!")
+    # Exact match, no need to name columns
+    elif [c.lower() for c in src_cols] == [c.lower() for c in tbl_cols]:
+        return (f"INSERT INTO [{schema}].[{table_name}] "
+                f"VALUES ({','.join(['?'] * len(usable_cols))})")
+    # Otherwise name columns - remember you can have identical columns in the wrong order
+    else:
+        print(f"\033[1;33mUsing named INSERTs (might be slower - ensure columns are identical to avoid this)...\033[0m")
+        cols_str = ','.join([f"[{c}]" for c in usable_cols])
+        return (f"INSERT INTO [{schema}].[{table_name}]({cols_str}) "
+                f"VALUES ({','.join(['?'] * len(usable_cols))})")
+
+
 #=============#
-#   Loaders   #
+#   Columns   #
 #=============#
-# Load a CSV into SQL
+def get_columns(table_name, schema, database):
+    query = f"""
+        SELECT COLUMN_NAME, DATA_TYPE
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = '{schema}'
+        AND TABLE_NAME = '{table_name}'
+        ORDER BY ORDINAL_POSITION
+    """
+    cur = run_query(query, database, "read")
+    cols = dict(cur.fetchall())
+    return cols
+
+def check_columns(src_cols, table, schema, database, strict_mode = True):
+    return make_insert_query(src_cols, table, schema, database, strict_mode = True) == None
+
+def sql_types_to_pandas_types(cols):
+    dtype = {}
+    parse_dates = []
+    for k,v in cols.items():
+        if v in ("bigint", "numeric", "bit", "smallint", "decimal", "smallmoney", "int", "tinyint", "money"):
+            v = "Int64"
+        elif v in ("float", "real"):
+            v = "Float64"
+        elif v in ("date", "datetimeoffset", "datetime2", "smalldatetime", "datetime", "time"):
+            v = "str"
+            parse_dates.append(k) # Dates can't be parsed directly, should be defined as strings then passed onto parse_dates
+        elif v in ("char", "varchar", "text", "nchar", "nvarchar", "ntext"):
+            v = "str"
+        else:
+            raise Exception(f"I don't know how to parse column type '{v}' for column '{k}'!")
+        dtype[k] = v
+    return dtype, parse_dates
+
+
+#================#
+#   Connection   #
+#================#
+# Get connection token
+# https://github.com/AzureAD/azure-activedirectory-library-for-python/wiki/Connect-to-Azure-SQL-Database
+# https://docs.sqlalchemy.org/en/14/dialects/mssql.html#connecting-to-databases-with-access-tokens
+def get_conn_token():
+    creds = AzureCliCredential() # Use default credentials - use `az cli login` to set this up
+    raw_token = creds.get_token("https://database.windows.net/").token.encode("utf-16-le")
+    token_struct = struct.pack(f"<I{len(raw_token)}s", len(raw_token), raw_token)
+    return { 1256: token_struct } # Connection option for access tokens, as defined in msodbcsql.h
+
+def pyodbc_conn(database):
+    conn = pyodbc.connect(f"{DB_CONN};Database={database};", attrs_before = get_conn_token())
+    return conn
+
+
+#==================#
+#   Basic loader   #
+#==================#
+# Load a CSV into SQL using INSERT + fast_executemany. Has acceptable speeds
+# and very good for debugging, but you should switch to bcp_loader for
+# production where you just want it to go real fast.
 def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", strict_mode = True, batch_size = 1000):
     if batch_size > 10000:
         print("\033[1;33mCAUTION! batch_size > 10000 is not recommended!\033[0m")
@@ -129,60 +246,6 @@ def find_bad_columns(bad_row, src_cols, table_name, schema, conn, max_omit = 3, 
         print("\033[1;31mNo combination of column removals worked, sorry.\033[0m")
 
 
-#====================#
-#   Authentication   #
-#====================#
-# Get connection token
-# https://github.com/AzureAD/azure-activedirectory-library-for-python/wiki/Connect-to-Azure-SQL-Database
-# https://docs.sqlalchemy.org/en/14/dialects/mssql.html#connecting-to-databases-with-access-tokens
-def get_conn_token():
-    creds = AzureCliCredential() # Use default credentials - use `az cli login` to set this up
-    raw_token = creds.get_token("https://database.windows.net/").token.encode("utf-16-le")
-    token_struct = struct.pack(f"<I{len(raw_token)}s", len(raw_token), raw_token)
-    return { 1256: token_struct } # Connection option for access tokens, as defined in msodbcsql.h
-
-
-#==================#
-#   pyodbc-based   #
-#==================#
-def pyodbc_conn(database):
-    conn = pyodbc.connect(f"{DB_CONN};Database={database};", attrs_before = get_conn_token())
-    return conn
-
-def run_query(query, database, mode, verbose = False):
-    if verbose: print(f"Running query:", query)
-    start = datetime.now()
-    conn = pyodbc_conn(database)
-    cur = conn.cursor()
-    cur.execute(query)
-    if mode == "read": pass
-    elif mode == "write": cur.commit()
-    elif mode == "test": cur.rollback()
-    else: raise Exception("Mode must be 'read', 'write', or 'test'!")
-    if verbose: print(f"Query completed in {datetime.now() - start}s.")
-    return cur
-
-def query_to_df(query, database):
-    print("Executing query...")
-    cur = run_query(query, database, mode = "read")
-    print("Extracting results...")
-    cols = [c[0] for c in cur.description]
-    raw = [dict(zip(cols, r)) for r in cur.fetchall()]
-    df = pd.DataFrame(raw)
-    print(f"{len(df)} rows in results...")
-    return df
-
-def truncate(table_name, schema, database, commit = True):
-    conn = pyodbc_conn(database)
-    cur = conn.cursor()
-    cur.execute(f"SELECT COUNT(*) FROM [{schema}].[{table_name}]")
-    old_row_count = cur.fetchone()[0]
-    if old_row_count:
-        print(f"\033[1;33mTruncating {old_row_count} existing rows from [{schema}].[{table_name}]...\033[0m")
-        cur.execute(f"TRUNCATE TABLE [{schema}].[{table_name}]")
-        if commit: cur.commit()
-
-
 #===============#
 #   bcp-based   #
 #===============#
@@ -263,64 +326,3 @@ def sqlalchemy_loader(local_fn, task, encoding = "utf-8", strict_mode = True, if
     engine = sqlalchemy_engine(database)
     df.to_sql(table_name, engine, schema, if_exists, index = False, chunksize = 1000)
     return len(df)
-
-
-#=============#
-#   Columns   #
-#=============#
-def get_columns(table_name, schema, database):
-    query = f"""
-        SELECT COLUMN_NAME, DATA_TYPE
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = '{schema}'
-        AND TABLE_NAME = '{table_name}'
-        ORDER BY ORDINAL_POSITION
-    """
-    cur = run_query(query, database, "read")
-    cols = dict(cur.fetchall())
-    return cols
-
-def sql_types_to_pandas_types(cols):
-    dtype = {}
-    parse_dates = []
-    for k,v in cols.items():
-        if v in ("bigint", "numeric", "bit", "smallint", "decimal", "smallmoney", "int", "tinyint", "money"):
-            v = "Int64"
-        elif v in ("float", "real"):
-            v = "Float64"
-        elif v in ("date", "datetimeoffset", "datetime2", "smalldatetime", "datetime", "time"):
-            v = "str"
-            parse_dates.append(k) # Dates can't be parsed directly, should be defined as strings then passed onto parse_dates
-        elif v in ("char", "varchar", "text", "nchar", "nvarchar", "ntext"):
-            v = "str"
-        else:
-            raise Exception(f"I don't know how to parse column type '{v}' for column '{k}'!")
-        dtype[k] = v
-    return dtype, parse_dates
-
-def check_columns(src_cols, table, schema, database, strict_mode = True):
-    return make_insert_query(src_cols, table, schema, database, strict_mode = True) == None
-
-def make_insert_query(src_cols, table, schema, database, strict_mode = True):
-    tbl_cols = get_columns(table, schema, database).keys()
-    src_cols = list(src_cols)
-    missing_cols = [c for c in tbl_cols if c not in src_cols]
-    extra_cols = [c for c in src_cols if c not in tbl_cols]
-    usable_cols = [c for c in src_cols if c in tbl_cols]
-    # Warn or break on errors
-    if missing_cols or extra_cols:
-        print(f"\033[1;33mExpected columns (from table): {tbl_cols}\033[0m")
-        print(f"\033[1;33mActual columns (from data): {src_cols}\033[0m")
-        print(f"\033[1;33mMissing columns: {missing_cols}\033[0m")
-        print(f"\033[1;33mUnexpected columns: {extra_cols}\033[0m")
-        if strict_mode: raise Exception(f"Expected columns are missing or unexpected columns are present!")
-    # Exact match, no need to name columns
-    elif [c.lower() for c in src_cols] == [c.lower() for c in tbl_cols]:
-        return (f"INSERT INTO [{schema}].[{table}] "
-                f"VALUES ({','.join(['?'] * len(usable_cols))})")
-    # Otherwise name columns - remember you can have identical columns in the wrong order
-    else:
-        print(f"\033[1;33mUsing named INSERTs (might be slower - ensure columns are identical to avoid this)...\033[0m")
-        cols_str = ','.join([f"[{c}]" for c in usable_cols])
-        return (f"INSERT INTO [{schema}].[{table}]({cols_str}) "
-                f"VALUES ({','.join(['?'] * len(usable_cols))})")
