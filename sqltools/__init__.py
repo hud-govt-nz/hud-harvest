@@ -64,6 +64,17 @@ def update(where, set, table_name, schema, database, commit = True):
     if commit: cur.commit()
     return cur.rowcount
 
+def delete(where, table_name, schema, database, commit = True):
+    conn = pyodbc_conn(database)
+    cur = conn.cursor()
+    where_str = [f"{k}=?" for k,v in where.items()]
+    cur.execute(
+        f"DELETE FROM [{schema}].[{table_name}]"
+        f"WHERE {','.join(where_str)}",
+        *where.values())
+    if commit: cur.commit()
+    return cur.rowcount
+
 def truncate(table_name, schema, database, commit = True):
     conn = pyodbc_conn(database)
     cur = conn.cursor()
