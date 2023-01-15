@@ -92,13 +92,13 @@ class Taskmaster:
                     run_status = "finished"
                     break
         except KeyboardInterrupt:
-            print("\033[1;33mAborting...\033[0m")
+            self.log_msg("Aborting...", "warning")
             run_status = "aborted"
         except AssertionError:
-            print("\033[1;31mHalting due to script error!\033[0m")
+            self.log_msg("Halting due to script error!", "error")
             run_status = "halted"
         except:
-            print("\033[1;31mCrashed!\033[0m")
+            self.log_msg("Crashed!", "error")
             run_status = "crashed"
             raise
         finally:
@@ -109,7 +109,7 @@ class Taskmaster:
                 "tasks_skipped": sum([t["status"] == "skipped" for t in tasks]),
                 "finished_at": datetime.now()
             })
-            print(f"\n\033[1m{run_status.upper()}\033[0m in {datetime.now() - start}s.")
+            self.log_msg(f"\n{run_status.upper()} in {datetime.now() - start}s.", "bold")
 
     # Break jobs down into interdependent tasks
     def list_tasks(self, jobs, only_run = None):
@@ -212,7 +212,7 @@ class Taskmaster:
             self.print_status()
             if debug:
                 dump_task(args, stdout, stderr)
-                print(f"\n\033[1;31m{t['script']} failed!\033[0m")
+                self.log_msg(f"\n{t['script']} failed!", "error")
                 raise
         except:
             if proc.returncode is None: proc.terminate() # Only terminate if it hasn't finished
@@ -247,14 +247,22 @@ class Taskmaster:
         print_tree(self.tasks, clear)
 
     def log_msg(self, message, level = "info"):
-        logging.info(message)
+        message = message.strip()
+        if level == "bold":
+            print(f"\033[1m{message}\033[0m")
+        elif level == "error":
+            print(f"\033[1;31m{message}\033[0m")
+        elif level == "warning":
+            print(f"\033[1;33m{message}\033[0m")
+        else:
+            print(message)
 
     def create_run_log(self):
         if not self.log_db: return
         where = { "run_name": self.run_name }
         row_count = delete(where, **self.log_db)
         if row_count:
-            print(f"\033[1;33mReplacing existing log for {self.run_name}...\033[0m")
+            self.log_msg(f"Replacing existing log for {self.run_name}...", "warning")
         row = {
             "run_name": self.run_name,
             "status": "started",
