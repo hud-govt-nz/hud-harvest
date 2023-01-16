@@ -173,24 +173,27 @@ class Taskmaster:
         self.on_task_ready(t)
         pipe = asyncio.subprocess.PIPE
         proc = await asyncio.create_subprocess_exec(*t["args"], stdout = pipe, stderr = pipe)
-        self.start_task(t) # Don't start the task until the subprocess has been created
+        t["start"] = datetime.now()
+        t["status"] = "running"
+        self.log_msg(f"{t['script']} starting...") # Don't start the task until the subprocess has been created
         try:
             stdout, stderr = [s.decode().strip() for s in await proc.communicate()]
+            t["end"] = datetime.now()
             assert proc.returncode == 0
             self.on_task_complete(t, stdout, stderr)
+            self.log_msg(f"{t['script']} finished with status {t['status']}.")
         except AssertionError:
             t["status"] = "failed"
             t["errors"] = stderr.split("\n")
             self.on_task_fail(t, stdout, stderr, forced)
+            self.log_msg(f"{t['script']} failed!", "error")
             if not forced: raise # Ignore fails if forced
-
         except:
             if proc.returncode is None: # Only terminate if it hasn't finished
                 proc.terminate()
                 t["status"] = "terminated"
             await proc.wait() # Wait for subprocess to terminate
-        finally:
-            self.end_task(t)
+            self.log_msg(f"{t['script']} terminated!", "warning")
         return t
 
     # Verifies a single task and compiles everything it needs to run
@@ -202,7 +205,6 @@ class Taskmaster:
         return {
             "script": script,
             "status": "unassigned", # All tasks start out unassigned
-            "last_run": self.get_last_run(script), # Fetch last run from log
             "job": job,
             "parents": [],
             "children": []
@@ -289,23 +291,6 @@ class Taskmaster:
         self.run_log.update(set)
         update(where, set, **self.log_db)
 
-    def start_task(self, t):
-        t["start"] = datetime.now()
-        t["status"] = "running"
-        self.log_msg(f"{t['script']} starting...")
-
-    def end_task(self, t):
-        t["end"] = datetime.now()
-        if t["status"] == "failed":
-            self.log_msg(f"{t['script']} failed!", "error")
-        else:
-            self.log_msg(f"{t['script']} finished with status {t['status']}.")
-
-    def get_last_run(self, s):
-        # df = pd.read_csv(f"{ROOT_PATH}/log.csv")
-        # df = df.query(f"script == '{s}' and status == 'success'").sort_values("end")
-        # if len(df): return dict(df.iloc[-1])
-        return None
 
 
 #===========#
