@@ -25,6 +25,7 @@ class Taskmaster:
     def __init__(self, jobs, run_name = "test_run", scripts_path = "modules", log_db = None):
         self.jobs = jobs
         self.run_name = run_name
+        self.run_log = {}
         self.scripts_path = pathlib.Path(scripts_path)
         self.log_db = log_db
         self.log_msgs = []
@@ -277,6 +278,7 @@ class Taskmaster:
             "status": "started",
             "started_at": datetime.now(),
         }
+        self.run_log.update(row)
         insert(row, **self.log_db)
 
     def set_run_log(self, set):
@@ -284,6 +286,7 @@ class Taskmaster:
         where = {
             "run_name": self.run_name
         }
+        self.run_log.update(set)
         update(where, set, **self.log_db)
 
     def start_task(self, t):
