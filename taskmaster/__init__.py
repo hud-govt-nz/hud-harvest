@@ -126,21 +126,6 @@ class Taskmaster:
             self.log_msg(f"Limiting to {len(tasks)} tasks related to {only_run}.")
         return tasks
 
-    # Verifies a single task and compiles everything it needs to run
-    def make_task(self, job, script):
-        name = job.get("name") or "Unnamed"
-        fn = self.scripts_path.joinpath(script)
-        if not os.path.isfile(fn):
-            raise Exception(f"Script '{fn}' not found (requested by job '{name}')!")
-        return {
-            "script": script,
-            "job": job,
-            "status": "unassigned", # All tasks start out unassigned
-            "last_run": self.get_last_run(script), # Fetch last run from log
-            "parents": [],
-            "children": []
-        }
-
     # Reduce task list to a selection and its ancestors
     def filter_tasks(self, tasks, only_run):
         selected = []
@@ -178,38 +163,52 @@ class Taskmaster:
             self.log_task(t)
             return False
 
+
     #================#
     #   Subprocess   #
     #================#
     # Run a single task as a subprocess
     async def run_task(self, t, forced = False):
+        self.on_task_ready(t)
         pipe = asyncio.subprocess.PIPE
-        args = t["args"] = self.prep_args(t)
-        proc = await asyncio.create_subprocess_exec(*args, stdout = pipe, stderr = pipe)
+        proc = await asyncio.create_subprocess_exec(*t["args"], stdout = pipe, stderr = pipe)
         self.start_task(t) # Don't start the task until the subprocess has been created
         try:
             stdout, stderr = [s.decode().strip() for s in await proc.communicate()]
             assert proc.returncode == 0
-            r = read_result(stdout)
-            t.update(r) # All outputs are saved to the task
-            self.end_task(t)
+            self.on_task_complete(t, stdout, stderr)
         except AssertionError:
             t["status"] = "failed"
             t["errors"] = stderr.split("\n")
-            self.end_task(t)
-            if not forced:
-                self.dump = dump_task(args, stdout, stderr)
-                raise
+            self.on_task_fail(t, stdout, stderr, forced)
+            if not forced: raise # Ignore fails if forced
+
         except:
             if proc.returncode is None: # Only terminate if it hasn't finished
                 proc.terminate()
                 t["status"] = "terminated"
             await proc.wait() # Wait for subprocess to terminate
+        finally:
             self.end_task(t)
         return t
 
+    # Verifies a single task and compiles everything it needs to run
+    def make_task(self, job, script):
+        job_name = job.get("name") or "Unnamed"
+        fn = self.scripts_path.joinpath(script)
+        if not os.path.isfile(fn):
+            raise Exception(f"Script '{fn}' not found (requested by job '{job_name}')!")
+        return {
+            "script": script,
+            "status": "unassigned", # All tasks start out unassigned
+            "last_run": self.get_last_run(script), # Fetch last run from log
+            "job": job,
+            "parents": [],
+            "children": []
+        }
+
     # Prepare arguments for subprocesses
-    def prep_args(self, t):
+    def prep_base_args(self, t):
         name, ext = t["script"].lower().split(".")
         script_fn = str(self.scripts_path.joinpath(t["script"]))
         if ext == "py":
@@ -218,12 +217,33 @@ class Taskmaster:
             args = ["Rscript", script_fn]
         else:
             raise Exception(f"I don't know how to run files with '.{ext}' extensions!")
-        args += self.prep_extra_args(t)
         return args
 
-    # Replace this with a custom function if you want to pass extra arguments
-    def prep_extra_args(self, t):
-        return []
+
+    #=================#
+    #   Task events   #
+    #=================#
+    # REPLACE EVENTS WITH CUSTOM FUNCTIONS
+    # Before task has started
+    def on_task_ready(self, t):
+        t["args"] = self.prep_base_args(t)
+        t["args"] += self.prep_extra_args(t)
+
+    # If task returned a code == 0
+    def on_task_complete(self, t, stdout, stderr):
+        r = read_result(stdout)
+        t.update(r) # All outputs are saved to the task
+
+    # If task returned a code != 0
+    def on_task_fail(self, t, stdout, stderr, forced):
+        if forced: return
+        safe_args = [re.sub(r"([\s])", r"\\\1", a) for a in t["args"]]
+        self.dump = (
+            f"\n\033[1;36m===  stdout  ===\033[0m\n{stdout}" +
+            f"\n\033[1;36m===  stderr  ===\033[0m\n{stderr}" +
+            f"\n\033[1;36m===  Command  ===\033[0m\n{' '.join(safe_args)}"
+        )
+
 
     #=============#
     #   Logging   #
@@ -348,17 +368,6 @@ def hash_output(t):
 #===============#
 #  Report/logs  #
 #===============#
-def dump_task(args, stdout, stderr):
-    safe_args = [re.sub(r"([\s])", r"\\\1", a) for a in args]
-    out = (
-        f"\n\033[1;36m===  stdout  ===\033[0m\n" +
-          stdout +
-          f"\n\033[1;36m===  stderr  ===\033[0m\n" +
-          stderr +
-          f"\n\033[1;36m===  Command  ===\033[0m\n" +
-          " ".join(safe_args))
-    return out
-
 def draw_message_box(messages):
     messages = messages[-6:]
     out = "\033[1;30m=======================  Log  =======================\033[0m\n"
