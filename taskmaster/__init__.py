@@ -183,8 +183,6 @@ class Taskmaster:
             self.on_task_complete(t, stdout, stderr)
             self.log_msg(f"{t['script']} finished with status {t['status']}.")
         except AssertionError:
-            t["status"] = "failed"
-            t["errors"] = stderr.split("\n")
             self.on_task_fail(t, stdout, stderr, forced)
             self.log_msg(f"{t['script']} failed!", "error")
             if not forced: raise # Ignore fails if forced
@@ -239,6 +237,7 @@ class Taskmaster:
 
     # If task returned a code != 0
     def on_task_fail(self, t, stdout, stderr, forced):
+        t["status"] = "failed"
         if forced: return
         safe_args = [re.sub(r"([\s])", r"\\\1", a) for a in t["args"]]
         self.dump = (
