@@ -62,7 +62,9 @@ class Taskmaster:
     def run(self, auto = False, forced = False, only_run = None, max_tasks = 8):
         start = datetime.now()
         run_status = "running"
-        tasks = self.tasks = self.list_tasks(self.jobs, only_run)
+        self.auto = auto
+        self.forced = forced
+        self.tasks = tasks = self.list_tasks(self.jobs, only_run)
         self.set_run_log({
             "run_args": str({
                 "auto": forced,
@@ -72,7 +74,7 @@ class Taskmaster:
             }),
             "status": run_status,
             "jobs_count": len(self.jobs),
-            "tasks_count": len(self.tasks)
+            "tasks_count": len(tasks)
         })
         self.print_status() # Print once to allocate lines
         try:
@@ -109,7 +111,7 @@ class Taskmaster:
                 "finished_at": datetime.now()
             })
             self.log_msg(f"\n{run_status.upper()} in {datetime.now() - start}s.", "bold")
-            self.on_run_complete(auto, forced, only_run)
+            self.on_run_complete()
 
     # Break jobs down into interdependent tasks
     def list_tasks(self, jobs, only_run = None):
@@ -247,8 +249,8 @@ class Taskmaster:
         self.dump = (t, stdout, stderr)
 
     # When the entire run is finished
-    def on_run_complete(self, auto, forced, only_run):
-        if not auto: return
+    def on_run_complete(self):
+        if not self.auto: return # Only report when running in auto
         print("Sending run report...")
         body = [simple_run_card(**self.run_log)] # Default run notification
         if hasattr(self, "dump"): body.append(dump_card(*self.dump))
