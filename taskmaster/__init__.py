@@ -4,6 +4,7 @@ import re, json, asyncio, hashlib
 import pandas as pd
 from datetime import datetime
 from sqltools import insert, update, delete
+from chatter import send_card
 
 ROOT_PATH = pathlib.Path(__file__).parent.absolute()
 STATUSES = {
@@ -103,6 +104,7 @@ class Taskmaster:
                 "finished_at": datetime.now()
             })
             self.log_msg(f"\n{run_status.upper()} in {datetime.now() - start}s.", "bold")
+            self.on_run_complete()
 
     # Break jobs down into interdependent tasks
     def list_tasks(self, jobs, only_run = None):
@@ -239,12 +241,26 @@ class Taskmaster:
     def on_task_fail(self, t, stdout, stderr, forced):
         t["status"] = "failed"
         if forced: return
-        safe_args = [re.sub(r"([\s])", r"\\\1", a) for a in t["args"]]
-        self.dump = (
-            f"\n\033[1;36m===  stdout  ===\033[0m\n{stdout}" +
-            f"\n\033[1;36m===  stderr  ===\033[0m\n{stderr}" +
-            f"\n\033[1;36m===  Command  ===\033[0m\n{' '.join(safe_args)}"
-        )
+        self.dump = (t, stdout, stderr)
+
+    # When the entire run is finished
+    def on_run_complete(self):
+        print("Sending run report...")
+        body = [simple_run_card(**self.run_log)] # Default run notification
+        if self.dump: body.append(dump_card(*self.dump))
+        body.append({
+            "type":"TextBlock",
+            "text":"Ping <at>Keith Ng</at>"
+        })
+        entities = [{
+            "type": "mention",
+            "text": "<at>Keith Ng</at>",
+            "mentioned": {
+                "id": "keith.ng@hud.govt.nz",
+                "name": "Keith Ng"
+            }
+        }]
+        send_card(body, entities)
 
 
     #=============#
@@ -260,7 +276,7 @@ class Taskmaster:
         if hasattr(self, "log_msg"):
             self.screen += draw_message_box(self.log_msgs) + "\n"
         if hasattr(self, "dump"):
-            self.screen += self.dump
+            self.screen += draw_dump(*self.dump)
         print(self.screen)
 
     def log_msg(self, message, level = "info"):
@@ -289,7 +305,6 @@ class Taskmaster:
         }
         self.run_log.update(set)
         update(where, set, **self.log_db)
-
 
 
 #===========#
@@ -397,3 +412,103 @@ def draw_branch(t, prefix = "", is_top = False, is_last = False):
     for c in t["children"]:
         out += draw_branch(c, prefix, is_last = c == t["children"][-1])
     return out
+
+def draw_dump(t, stdout, stderr):
+    safe_args = [re.sub(r"([\s])", r"\\\1", a) for a in t["args"]]
+    return (
+        f"\n\033[1;36m===  stdout  ===\033[0m\n{stdout or '[stdout is empty]'}" +
+        f"\n\033[1;36m===  stderr  ===\033[0m\n{stderr or '[stderr is empty]'}" +
+        f"\n\033[1;36m===  Command  ===\033[0m\n{' '.join(safe_args)}"
+    )
+
+
+#===========#
+#   Teams   #
+#===========#
+# Default run-card
+def simple_run_card(run_name, run_args, jobs_count, tasks_count, tasks_succeeded, tasks_failed, tasks_skipped, status, started_at, finished_at):
+    STATUS_COLOUR = {
+        "success": "good",
+        "aborted": "warning",
+        "halted": "attention",
+        "crashed": "attention"
+    }
+    return {
+        "type": "Container",
+        "bleed": True,
+        "items": [{
+            "type": "TextBlock",
+            "size": "small",
+            "weight": "bolder",
+            "text": run_name
+        }, {
+            "type": "TextBlock",
+            "size": "large",
+            "weight": "bolder",
+            "spacing": "none",
+            "color": STATUS_COLOUR[status],
+            "text": status.upper()
+        }, {
+            "type":"FactSet",
+            "facts":[{
+                "title": "Jobs:",
+                "value": f"{tasks_count} tasks from {jobs_count} jobs"
+            }, {
+                "title": "Outcome:",
+                "value": f"{tasks_succeeded} tasks succeeded, {tasks_failed} failed, {tasks_skipped} skipped"
+            }, {
+                "title": "Run time:",
+                "value": f"{str(finished_at - started_at)[:-4]}"
+            }, {
+                "title": "Args:",
+                "value": run_args
+            }]
+        }]
+    }
+
+# Card for reporting errors
+def dump_card(t, stdout, stderr):
+    safe_args = [re.sub(r"([\s])", r"\\\1", a) for a in t["args"]]
+    return {
+        "type": "Container",
+        "style": "warning",
+        "bleed": True,
+        "items": [{
+            "type": "TextBlock",
+            "size": "small",
+            "text": "Error while running:"
+        }, {
+            "type": "TextBlock",
+            "spacing": "small",
+            "fontType": "Monospace",
+            "weight": "Bolder",
+            "wrap": True,
+            "text": " ".join(safe_args)
+        }, {
+            "type": "TextBlock",
+            "size": "small",
+            "weight": "Bolder",
+            "color": "Accent",
+            "text":"==  stdout  =="
+        }, {
+            "type": "TextBlock",
+            "size": "small",
+            "spacing": "none",
+            "fontType": "Monospace",
+            "wrap": True,
+            "text": re.sub(r"\n", r"\n\n", stdout) or "_stdout is empty_"
+        }, {
+            "type": "TextBlock",
+            "size": "small",
+            "weight": "Bolder",
+            "color": "Accent",
+            "text":"==  stderr  =="
+        }, {
+            "type": "TextBlock",
+            "size": "small",
+            "spacing": "none",
+            "fontType": "Monospace",
+            "wrap": True,
+            "text": re.sub(r"\n", r"\n\n", stderr) or "_stderr is empty_"
+        }]
+    }

@@ -9,7 +9,8 @@ setup(
     packages=[
         "scraper", "seleniumscraper",
         "sqltools", "mongotools",
-        "dbloader", "taskmaster"
+        "dbloader", "taskmaster",
+        "chatter"
     ],
     include_package_data=True,
     install_requires=[
@@ -17,6 +18,7 @@ setup(
         "pandas", "numpy", "bs4",
         "sqlalchemy", "pyodbc", "pymongo", "ijson",
         "requests", "xlrd", "openpyxl", "pyxlsb",
-        "selenium", "webdriver-manager", "pyvirtualdisplay"
+        "selenium", "webdriver-manager", "pyvirtualdisplay",
+        "pymsteams"
     ]
 )
