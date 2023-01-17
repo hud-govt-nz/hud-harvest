@@ -42,7 +42,7 @@ class Taskmaster:
                             help = "Number of tasks to run simultaneously (defaults to 8)")
         parser.add_argument("--auto",
                             action = "store_const",
-                            const = False,
+                            const = True,
                             help = "Run unsupervised and send results via Teams.")
         parser.add_argument("--forced",
                             action = "store_const",
@@ -59,15 +59,16 @@ class Taskmaster:
     #   Task management   #
     #=====================#
     # Runs all tasks until no ready tasks are available
-    def run(self, max_tasks = 8, auto = False, forced = False, only_run = None):
+    def run(self, auto = False, forced = False, only_run = None, max_tasks = 8):
         start = datetime.now()
         run_status = "running"
         tasks = self.tasks = self.list_tasks(self.jobs, only_run)
         self.set_run_log({
             "run_args": str({
-                "max_tasks": max_tasks,
+                "auto": forced,
                 "forced": forced,
-                "only_run": only_run
+                "only_run": only_run,
+                "max_tasks": max_tasks
             }),
             "status": run_status,
             "jobs_count": len(self.jobs),
