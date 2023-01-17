@@ -192,11 +192,11 @@ class Taskmaster:
             self.on_task_fail(t, stdout, stderr, forced)
             self.log_msg(f"{t['script']} failed!", "error")
             if not forced: raise # Ignore fails if forced
-        except:
+        finally:
             if proc.returncode is None: # Only terminate if it hasn't finished
                 proc.terminate()
+                await proc.wait() # Wait for subprocess to terminate
                 t["status"] = "terminated"
-            await proc.wait() # Wait for subprocess to terminate
         return t
 
     # Verifies a single task and compiles everything it needs to run
