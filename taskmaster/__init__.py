@@ -197,7 +197,6 @@ class Taskmaster:
                 proc.terminate()
                 t["status"] = "terminated"
             await proc.wait() # Wait for subprocess to terminate
-            self.log_msg(f"{t['script']} terminated!", "warning")
         return t
 
     # Verifies a single task and compiles everything it needs to run
