@@ -40,6 +40,10 @@ class Taskmaster:
                             type = int,
                             default = 8,
                             help = "Number of tasks to run simultaneously (defaults to 8)")
+        parser.add_argument("--auto",
+                            action = "store_const",
+                            const = False,
+                            help = "Run unsupervised and send results via Teams.")
         parser.add_argument("--forced",
                             action = "store_const",
                             const = True,
@@ -55,7 +59,7 @@ class Taskmaster:
     #   Task management   #
     #=====================#
     # Runs all tasks until no ready tasks are available
-    def run(self, max_tasks = 8, forced = False, only_run = None):
+    def run(self, max_tasks = 8, auto = False, forced = False, only_run = None):
         start = datetime.now()
         run_status = "running"
         tasks = self.tasks = self.list_tasks(self.jobs, only_run)
@@ -104,7 +108,7 @@ class Taskmaster:
                 "finished_at": datetime.now()
             })
             self.log_msg(f"\n{run_status.upper()} in {datetime.now() - start}s.", "bold")
-            self.on_run_complete()
+            self.on_run_complete(auto, forced, only_run)
 
     # Break jobs down into interdependent tasks
     def list_tasks(self, jobs, only_run = None):
@@ -244,7 +248,8 @@ class Taskmaster:
         self.dump = (t, stdout, stderr)
 
     # When the entire run is finished
-    def on_run_complete(self):
+    def on_run_complete(self, auto, forced, only_run):
+        if not auto: return
         print("Sending run report...")
         body = [simple_run_card(**self.run_log)] # Default run notification
         if self.dump: body.append(dump_card(*self.dump))
