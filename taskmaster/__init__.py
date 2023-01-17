@@ -188,7 +188,7 @@ class Taskmaster:
             t["end"] = datetime.now()
             assert proc.returncode == 0
             self.on_task_complete(t, stdout, stderr)
-            self.log_msg(f"{t['script']} finished with status {t['status']}.")
+            self.log_msg(f"{t['script']} finished with status '{t['status']}'.")
         except AssertionError:
             self.on_task_fail(t, stdout, stderr, forced)
             self.log_msg(f"{t['script']} failed!", "error")
