@@ -269,7 +269,7 @@ class Taskmaster:
     #=============#
     #   Logging   #
     #=============#
-    def print_status(self, logs_size = 12):
+    def print_status(self, logs_size = 6):
         if self.screen:
             for l in self.screen.split("\n"):
                 print('\033[1A', end='\x1b[2K')
