@@ -251,7 +251,7 @@ class Taskmaster:
         if not auto: return
         print("Sending run report...")
         body = [simple_run_card(**self.run_log)] # Default run notification
-        if self.dump: body.append(dump_card(*self.dump))
+        if hasattr(self, "dump"): body.append(dump_card(*self.dump))
         body.append({
             "type":"TextBlock",
             "text":"Ping <at>Keith Ng</at>"
