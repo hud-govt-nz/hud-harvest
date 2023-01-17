@@ -270,7 +270,7 @@ class Taskmaster:
     #=============#
     #   Logging   #
     #=============#
-    def print_status(self):
+    def print_status(self, logs_size = 12):
         if self.screen:
             for l in self.screen.split("\n"):
                 print('\033[1A', end='\x1b[2K')
@@ -278,7 +278,7 @@ class Taskmaster:
         if hasattr(self, "tasks"):
             self.screen += draw_tree(self.tasks) + "\n"
         if hasattr(self, "log_msg"):
-            self.screen += draw_message_box(self.log_msgs) + "\n"
+            self.screen += draw_message_box(self.log_msgs, logs_size) + "\n"
         if hasattr(self, "dump"):
             self.screen += draw_dump(*self.dump)
         print(self.screen)
@@ -374,10 +374,10 @@ def hash_output(t):
 #===============#
 #  Report/logs  #
 #===============#
-def draw_message_box(messages):
-    messages = messages[-6:]
+def draw_message_box(messages, logs_size = 6):
+    messages = messages[-logs_size:]
     out = "\033[1;30m=======================  Log  =======================\033[0m\n"
-    out += "\n" * (6 - len(messages))
+    out += "\n" * (logs_size - len(messages))
     for d,m,l in messages:
         if l == "bold":
             colour = "\033[1m"
