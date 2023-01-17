@@ -12,7 +12,8 @@ from taskmaster import dump_result
 class DBLoadTask:
     def __init__(self, task_name, table_name, schema, database = "property", log_table_name = "botlogs"):
         self.conn = pyodbc_conn(database)
-        self.name = task_name
+        self.task_name = task_name
+        self.table_name = table_name
         self.schema = schema
         self.database = database
         self.log_table_name = log_table_name
@@ -34,11 +35,9 @@ class DBLoadTask:
         cur = self.conn.cursor()
         cur.execute(
             f"SELECT * FROM [{self.schema}].[{self.log_table_name}] WHERE task_name = ?",
-            self.name)
+            self.task_name)
         self.log = cur.fetchone()
         log = self.log or [None] * 11
-        self.task_name = log[0]
-        self.table_name = log[1]
         self.source_url = log[2]
         self.file_type = log[3]
         self.start_date = log[4]
@@ -50,13 +49,21 @@ class DBLoadTask:
         self.loaded_at = log[10]
         return self.log
 
+    def new_log(self):
+        cur = self.conn.cursor()
+        cur.execute(
+            f"INSERT INTO [{self.schema}].[{self.log_table_name}](task_name, table_name) VALUES(?,?,?)",
+            self.task_name, self.table_name)
+        cur.commit()
+        self.get_log()
+
     # Alter properties in log
     def set_log(self, props):
         cur = self.conn.cursor()
         keys = ",".join([f"{k} = ?" for k in props.keys()])
         cur.execute(
             f"UPDATE [{self.schema}].[{self.log_table_name}] SET {keys} WHERE task_name = ?",
-            *props.values(), self.name)
+            *props.values(), self.task_name)
         cur.commit()
         self.get_log()
 
@@ -64,16 +71,16 @@ class DBLoadTask:
     # Forced will overwrite existing stored file
     def store(self, local_fn, container_url, source_url = "", forced = False):
         if not self.log:
-            status(f"'{self.name}' hasn't been created! Run task.create() first.", "error")
+            status(f"'{self.task_name}' hasn't been created! Run task.create() first.", "error")
             sys.exit()
         l_md5, l_size, l_mtime = local_props(local_fn)
         if not forced and self.hash == l_md5:
-            status(f"'{self.name}' is already stored and the stored hash matches the local file.", "warning")
+            status(f"'{self.task_name}' is already stored and the stored hash matches the local file.", "warning")
         else:
             ext = re.match(".*\.(\w+)$", local_fn)[1]
             blob_fn = f"{self.table_name}/{self.task_name}.{ext}"
             store(local_fn, blob_fn, container_url, forced)
-            status(f"'{self.name}' stored.", "success")
+            status(f"'{self.task_name}' stored.", "success")
             self.set_log({
                 "source_url": source_url,
                 "file_type": ext,
@@ -88,26 +95,24 @@ class DBLoadTask:
     # Arguments for loader can be included in kwargs
     def load(self, container_url, loader, forced = False, **kwargs):
         if not self.stored_at:
-            status(f"'{self.name}' hasn't been stored! Run task.store() first.", "error")
+            status(f"'{self.task_name}' hasn't been stored! Run task.store() first.", "error")
             sys.exit()
-        task_name = self.task_name
-        table_name = self.table_name
-        ext = self.file_type
-        blob_fn = f"{table_name}/{task_name}.{ext}"
+        fn = f"{self.task_name}.{self.file_type}"
+        blob_fn = f"{self.table_name}/{fn}"
         b_md5, b_size, b_mtime = blob_props(blob_fn, container_url)
         if b_md5 != self.hash:
             raise Exception("Hash of file stored on the blob doesn't match the logged hash! Something went wrong during .store()?")
         elif not forced and self.loaded_at:
-            status(f"'{self.name}' is already loaded and the stored hash matches the local file. Use 'forced = True' if you really want to redo this.", "warning")
+            status(f"'{self.task_name}' is already loaded and the stored hash matches the local file. Use 'forced = True' if you really want to redo this.", "warning")
         else:
-            local_fn = f"temp/{task_name}.{ext}"
+            local_fn = f"temp/{fn}"
             retrieve(local_fn, blob_fn, container_url)
             # if forced:
-            #     status(f"Force loading {self.name}...", "warning")
+            #     status(f"Force loading {self.task_name}...", "warning")
             #     self.unload()
             start = datetime.now()
             row_count = loader(local_fn, self, **kwargs)
-            status(f"'{self.name}' loaded ({row_count} rows) in {datetime.now() - start}s.", "success")
+            status(f"'{self.task_name}' loaded ({row_count} rows) in {datetime.now() - start}s.", "success")
             self.set_log({
                 "row_count": row_count,
                 "loaded_at": datetime.now()
@@ -118,12 +123,15 @@ class DBLoadTask:
     #     cur = run_query(
     #         f"DELETE FROM [{self.schema}].[{self.table_name}] WHERE task_name = '{self.task_name}'",
     #         self.database, mode = "write")
-    #     status(f"'{self.name}' unloaded ({cur.rowcount} rows) from {self.table_name}.", "warning")
+    #     status(f"'{self.task_name}' unloaded ({cur.rowcount} rows) from {self.table_name}.", "warning")
     #     self.set_log({ "loaded_at": None })
 
     # Print results so it can be read by Taskmaster
     def dump_result(self):
+        if self.loaded_at and self.stored_at: status = "success"
+        else: status = "failed"
         dump_result({
+            "status": status,
             "task_name": self.task_name,
             "table_name": self.table_name,
             "source_url": self.source_url,
@@ -151,13 +159,9 @@ def status(message, status_type):
 # Generate a DBLoader task card for sending via Teams
 def dbload_card(t):
     STATUS_COLOUR = {
-        "finished": "good",
-        "incomplete": "attention",
-        "unknown": "attention"
+        "success": "good",
+        "failed": "attention"
     }
-    if t["loaded_at"]: status = "finished"
-    elif t["stored_at"]: status = "incomplete"
-    else: status = "unknown"
     return {
         "type": "Container",
         "bleed": True,
@@ -171,8 +175,8 @@ def dbload_card(t):
             "size": "large",
             "weight": "bolder",
             "spacing": "none",
-            "color": STATUS_COLOUR[status],
-            "text": status
+            "color": STATUS_COLOUR[t["status"]],
+            "text": t["status"]
         }, {
             "type":"FactSet",
             "facts":[{
