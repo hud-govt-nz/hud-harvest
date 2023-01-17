@@ -289,7 +289,7 @@ def find_bad_columns(bad_row, src_cols, table_name, schema, conn, max_omit = 3, 
 #   bcp-based   #
 #===============#
 # bcp is very fast, but cannot use Active Directory authentication
-def bcp_loader(local_fn, task, if_exists = "append", delimiter = "|", encoding = "utf-8", strict_mode = True, batch_size = 10000):
+def bcp_loader(local_fn, task, if_exists = "append", delimiter = "|", encoding = "utf-8", strict_mode = True, batch_size = 100000):
     task_name = task.task_name
     table_name = task.table_name
     schema = task.schema
