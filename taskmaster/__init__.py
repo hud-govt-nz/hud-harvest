@@ -234,7 +234,6 @@ class Taskmaster:
     # Before task has started
     def on_task_ready(self, t):
         t["args"] = self.prep_base_args(t)
-        t["args"] += self.prep_extra_args(t)
 
     # If task returned a code == 0
     def on_task_complete(self, t, stdout, stderr):
