@@ -1,4 +1,4 @@
-import os, sys, csv
+import os, sys, csv, re
 import struct
 import pyodbc
 import math, itertools
@@ -295,11 +295,14 @@ def bcp_loader(local_fn, task, if_exists = "append", delimiter = "|", encoding =
     schema = task.schema
     database = task.database
     # Check secrets
-    DB_SERVER = os.getenv("DB_SERVER")
-    DB_UID = os.getenv("DB_UID")
-    DB_PASS = os.getenv("DB_PASS")
-    if not (DB_SERVER and DB_UID and DB_PASS):
-        raise Exception("bcp_loader() requires DB_SERVER, DB_UID, and DB_PASS to be set in .env! Read the 'Setting secrets' section in the README.")
+    DB_CONN = os.getenv("DB_CONN")
+    try:
+        DB_SERVER = re.search("Server=([^;]*);", DB_CONN, flags = re.IGNORECASE)[1]
+        DB_UID = re.search("uid=([^;]*);", DB_CONN, flags = re.IGNORECASE)[1]
+        DB_PASS = re.search("pwd=([^;]*);", DB_CONN, flags = re.IGNORECASE)[1]
+    except TypeError:
+        print("DB_CONN:", DB_CONN)
+        raise Exception("bcp_loader() requires server, uid and pwd to be set in the 'DB_CONN' string in '.env'! Read the 'Setting secrets' section in the README.")
     # Check whether to wipe existing table
     if if_exists == "replace":
         truncate(table_name, schema, database)
