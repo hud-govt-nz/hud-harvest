@@ -29,6 +29,19 @@ pipenv install -e ~/hud-harvest
 
 
 ## Usage
+### Setting secrets
+When using `hud-harvest`, you need to put secrets in a `.env` **where the project is run from**. For example, if you're using `hud-harvest` in `hmu-bot`, you need a `hmu-bot/.env` file that looks like:
+```
+DB_CONN="Driver={ODBC Driver 18 for SQL Server};Server=property.database.windows.net;uid=[USERNAME];pwd=[PASSWORD];"
+CONTAINER_URL="https://dlprojectsdataprod.blob.core.windows.net/projects"
+TEAMS_WEBHOOK="https://mhud.webhook.office.com/webhookb2/NOT-THE-REAL-WEBHOOK"
+```
+
+* `DB_CONN`: Your database connection string. If you're connecting from Windows you do not need to provide uid/pwd.
+* `TEAMS_WEBHOOK`: The [incoming Teams webhook](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook), this allows the `chatter` module to send Teams messages.
+* `CONTAINER_URL`: Location of the Azure storage container where `hud-keep` will store blobs.
+
+### Running
 ```python
-import tasker
+from sqltools import run_query
 ```

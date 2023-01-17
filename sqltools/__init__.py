@@ -10,8 +10,6 @@ from sqlalchemy.engine import URL, create_engine
 from azure.identity import AzureCliCredential
 
 csv.field_size_limit(sys.maxsize)
-DB_CONN = os.getenv("DB_CONN")
-if not DB_CONN: raise Exception("DB_CONN not set in .env! Read the 'Setting secrets' section in the README.")
 
 
 #=================#
@@ -165,6 +163,8 @@ def get_conn_token():
     return { 1256: token_struct } # Connection option for access tokens, as defined in msodbcsql.h
 
 def pyodbc_conn(database):
+    DB_CONN = os.getenv("DB_CONN")
+    if not DB_CONN: raise Exception("'DB_CONN' not set in '.env'! Read the 'Setting secrets' section in the README.")
     conn = pyodbc.connect(f"{DB_CONN};Database={database};", attrs_before = get_conn_token())
     return conn
 
@@ -340,6 +340,8 @@ def bcp_loader(local_fn, task, if_exists = "append", delimiter = "|", encoding =
 #   sqlalchemy-based   #
 #======================#
 def sqlalchemy_engine(database, fast_executemany = True):
+    DB_CONN = os.getenv("DB_CONN")
+    if not DB_CONN: raise Exception("'DB_CONN' not set in '.env'! Read the 'Setting secrets' section in the README.")
     conn_url = URL.create("mssql+pyodbc", query = { "odbc_connect": f"{DB_CONN};Database={database};" })
     engine = create_engine(conn_url, fast_executemany = fast_executemany)
     @event.listens_for(engine, "do_connect")
