@@ -10,18 +10,30 @@ from sqltools import run_query, pyodbc_conn
 from taskmaster import dump_result
 
 class DBLoadTask:
-    def __init__(self, task_name, schema = "source", database = "property"):
+    def __init__(self, task_name, table_name, schema, database = "property", log_table_name = "botlogs"):
         self.conn = pyodbc_conn(database)
         self.name = task_name
         self.schema = schema
         self.database = database
+        self.log_table_name = log_table_name
         self.get_log()
+        # Create log entry for task - CAN'T DO ANYTHING WITHOUT THIS
+        if self.log:
+            status(f"{task_name} already exists...", "warning")
+        else:
+            status(f"Creating '{task_name}'...", "success")
+            cur = self.conn.cursor()
+            cur.execute(
+                f"INSERT INTO [{schema}].[{log_table_name}](task_name, table_name) VALUES(?,?,?)",
+                task_name, table_name)
+            cur.commit()
+            self.get_log()
 
     # Try to retrieve log information (will return None if it doesn't exist yet)
     def get_log(self):
         cur = self.conn.cursor()
         cur.execute(
-            f"SELECT * FROM [{self.schema}].[botlogs] WHERE task_name = ?",
+            f"SELECT * FROM [{self.schema}].[{self.log_table_name}] WHERE task_name = ?",
             self.name)
         self.log = cur.fetchone()
         log = self.log or [None] * 11
@@ -43,27 +55,14 @@ class DBLoadTask:
         cur = self.conn.cursor()
         keys = ",".join([f"{k} = ?" for k in props.keys()])
         cur.execute(
-            f"UPDATE [{self.schema}].[botlogs] SET {keys} WHERE task_name = ?",
+            f"UPDATE [{self.schema}].[{self.log_table_name}] SET {keys} WHERE task_name = ?",
             *props.values(), self.name)
         cur.commit()
         self.get_log()
 
-    # Create log entry for task - CAN'T DO ANYTHING WITHOUT THIS
-    def create(self, table_name, source_url):
-        if self.log:
-            status(f"{self.name} already exists...", "warning")
-        else:
-            status(f"Creating '{self.name}'...", "success")
-            cur = self.conn.cursor()
-            cur.execute(
-                f"INSERT INTO [{self.schema}].[botlogs](task_name, table_name, source_url) VALUES(?,?,?)",
-                self.name, table_name, source_url)
-            cur.commit()
-            self.get_log()
-
     # Store a local file and save metadata to task log
     # Forced will overwrite existing stored file
-    def store(self, local_fn, container_url, forced = False):
+    def store(self, local_fn, container_url, source_url = "", forced = False):
         if not self.log:
             status(f"'{self.name}' hasn't been created! Run task.create() first.", "error")
             sys.exit()
@@ -76,6 +75,7 @@ class DBLoadTask:
             store(local_fn, blob_fn, container_url, forced)
             status(f"'{self.name}' stored.", "success")
             self.set_log({
+                "source_url": source_url,
                 "file_type": ext,
                 "hash": l_md5,
                 "size": l_size,
