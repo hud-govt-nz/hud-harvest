@@ -148,6 +148,64 @@ def status(message, status_type):
         colour = "\033[1;31m"
     print(f"{colour}{message}\033[0m")
 
+# Generate a DBLoader task card for sending via Teams
+def dbload_card(t):
+    STATUS_COLOUR = {
+        "finished": "good",
+        "incomplete": "attention",
+        "unknown": "attention"
+    }
+    if t["loaded_at"]: status = "finished"
+    elif t["stored_at"]: status = "incomplete"
+    else: status = "unknown"
+    return {
+        "type": "Container",
+        "bleed": True,
+        "items": [{
+            "type": "TextBlock",
+            "size": "small",
+            "weight": "bolder",
+            "text": t["task_name"]
+        }, {
+            "type": "TextBlock",
+            "size": "large",
+            "weight": "bolder",
+            "spacing": "none",
+            "color": STATUS_COLOUR[status],
+            "text": status
+        }, {
+            "type":"FactSet",
+            "facts":[{
+                "title": "Table name",
+                "value": t["table_name"]
+            }, {
+                "title": "Source URL",
+                "value": t["source_url"]
+            }, {
+                "title": "File type",
+                "value": t["file_type"]
+            }, {
+                "title": "Start date",
+                "value": t["start_date"]
+            }, {
+                "title": "End date",
+                "value": t["end_date"]
+            }, {
+                "title": "Size",
+                "value": t["size"]
+            }, {
+                "title": "Row count",
+                "value": t["row_count"]
+            }, {
+                "title": "Stored at",
+                "value": t["stored_at"]
+            }, {
+                "title": "Loaded at",
+                "value": t["loaded_at"]
+            }]
+        }]
+    }
+
 
 #=======================#
 #   Table-level tools   #
