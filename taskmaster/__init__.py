@@ -349,9 +349,9 @@ async def gather_with_concurrency(tasks, max_tasks):
 #===========#
 # Wrap JSON dump so we can pluck it out of stdout
 def dump_result(payload):
-    out = "== RESULT START ==\n"
+    out = "\n== RESULT START ==\n"
     out += json.dumps(payload)
-    out += "\n== RESULT END =="
+    out += "\n== RESULT END ==\n"
     sys.stdout.write(out)
 
 # Extract results from a text block
