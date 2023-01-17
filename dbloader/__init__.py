@@ -7,6 +7,7 @@ import numpy as np
 from datetime import datetime
 from hudkeep import store, retrieve, local_props, blob_props
 from sqltools import run_query, pyodbc_conn
+from taskmaster import dump_result
 
 class DBLoadTask:
     def __init__(self, task_name, schema = "source", database = "property"):
@@ -119,6 +120,23 @@ class DBLoadTask:
     #         self.database, mode = "write")
     #     status(f"'{self.name}' unloaded ({cur.rowcount} rows) from {self.table_name}.", "warning")
     #     self.set_log({ "loaded_at": None })
+
+    # Print results so it can be read by Taskmaster
+    def dump_result(self):
+        dump_result({
+            "task_name": self.task_name,
+            "table_name": self.table_name,
+            "source_url": self.source_url,
+            "file_type": self.file_type,
+            "start_date": str(self.start_date),
+            "end_date": str(self.end_date),
+            "size": self.size,
+            "hash": self.hash.hex(),
+            "row_count": self.row_count,
+            "stored_at": str(self.stored_at),
+            "loaded_at": str(self.loaded_at)
+        })
+
 
 # Colourful print very nice
 def status(message, status_type):
