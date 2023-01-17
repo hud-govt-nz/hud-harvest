@@ -432,7 +432,7 @@ def draw_dump(t, stdout, stderr):
 # Default run-card
 def simple_run_card(run_name, run_args, jobs_count, tasks_count, tasks_succeeded, tasks_failed, tasks_skipped, status, started_at, finished_at):
     STATUS_COLOUR = {
-        "success": "good",
+        "finished": "good",
         "aborted": "warning",
         "halted": "attention",
         "crashed": "attention"
