@@ -10,54 +10,194 @@ from sqltools import run_query, pyodbc_conn
 from taskmaster import dump_result
 
 class DBLoadTask:
-    def __init__(self, task_name, table_name, schema, database = "property", log_table_name = "botlogs"):
+    def __init__(self, task_name, table_name, schema, database = "property", log_table_name = "dbtask_logs"):
+        """
+        Creates and logs a new DBLoadTask.
+
+        DBLoadTasks are designed to be self-contained and self-logging tasks
+        which can be run on its own or as part of a Taskmaster run. Each task
+        should be initialised, then
+
+        Parameters
+        ----------
+        task_name : str
+            Unique identifier for this task.
+            e.g. "hmu-bot-20230110"
+        table_name : str
+            Table that this task will load to.
+        schema : str
+            Schema that this task will load to.
+        database : str
+            Database that this task will load to.
+        log_table_name : str
+            Table that this task will log to. This table is expected to be in
+            the same schema as the load table.
+
+        Examples
+        --------
+        t = DBLoadTask(task_name, table_name, schema_name, db_name)
+        t.store(local_fn, dst_container, src_url)
+        t.load(dst_container, loader = bcp_loader, if_exists = "replace")
+        t.dump_result()
+        """
         self.conn = pyodbc_conn(database)
         self.task_name = task_name
         self.table_name = table_name
         self.schema = schema
         self.database = database
         self.log_table_name = log_table_name
-        self.get_log()
         # Create log entry for task - CAN'T DO ANYTHING WITHOUT THIS
+        self.log = self.get_log()
         if self.log:
-            status(f"{task_name} already exists...", "warning")
+            log_msg(f"Task '{task_name}' already exists...", "warning")
         else:
-            status(f"Creating '{task_name}'...", "success")
-            cur = self.conn.cursor()
-            cur.execute(
-                f"INSERT INTO [{schema}].[{log_table_name}](task_name, table_name) VALUES(?,?,?)",
-                task_name, table_name)
-            cur.commit()
-            self.get_log()
+            log_msg(f"Creating new task '{task_name}'...", "success")
+            self.new_log()
 
-    # Try to retrieve log information (will return None if it doesn't exist yet)
+
+    #=============#
+    #   Actions   #
+    #=============#
+    def store(self, local_fn, container_url, source_url = "", forced = False):
+        """
+        Stores a local file in the blob.
+
+        Parameters
+        ----------
+        local_fn : str
+            Local file name.
+        container_url : str
+            URL for Azure storage container where the file will be stored.
+            e.g. "https://dlprojectsdataprod.blob.core.windows.net/bot-outputs"
+        source_url : str
+            Identifier for where the file came from. This is used to evaluate
+            what is a match. Only files with identical table_name, source_url
+            and hash are considered matches.
+        forced : boolean
+            If true, will ignore hash check and store regardless of existing
+            files.
+        """
+        # Don't store if already stored, unless forced to
+        store_status = self.log["store_status"]
+        if store_status == "success":
+            log_msg(f"'{self.task_name}' already been stored!", "warning")
+            if forced: log_msg(f"...forcing store() to continue...", "warning")
+            else: return # Repeat of the same task - do not update log, do not store
+        # Don't store if the file matches the previous stored file with the
+        # same table_name/source_url, unless forced to
+        last_stored = self.get_last_stored(source_url)
+        l_md5, l_size, l_mtime = local_props(local_fn)
+        if last_stored and l_md5 == last_stored["hash"]:
+            log_msg(f"An identical file was already stored on "
+                   f"{last_stored['stored_at']:%Y-%m-%d %H:%M:%S} by "
+                   f"'{last_stored['task_name']}'...", "warning")
+            if forced: log_msg(f"...forcing store() to continue...", "warning")
+            else: return self.set_log({
+                "source_url": source_url,
+                "store_status": "skipped"
+            })
+        ext = re.match(".*\.(\w+)$", local_fn)[1]
+        blob_fn = f"{self.table_name}/{self.task_name}.{ext}"
+        store(local_fn, blob_fn, container_url, forced)
+        self.set_log({
+            "source_url": source_url,
+            "file_type": ext,
+            "hash": l_md5,
+            "size": l_size,
+            "store_status": "success",
+            "stored_at": datetime.now()
+        })
+        log_msg(f"'{self.task_name}' stored.", "success")
+
+    def load(self, container_url, loader, forced = False, **kwargs):
+        """
+        Loads a data file into the database.
+
+        Mostly relies on store() to check freshness
+
+        Parameters
+        ----------
+        container_url : str
+            URL for Azure storage container where the file will be loaded from.
+            e.g. "https://dlprojectsdataprod.blob.core.windows.net/bot-outputs"
+        loader : function
+            Function which will be used to do the actual loading. Look in the
+            sqltools module for examples (e.g. sql_loader(), bcp_loader()).
+        forced : boolean
+            If true, will ignore hash check and load regardless of existing
+            files. This can be dangerous for complex/irreversible loads!
+        **kwargs : dict
+            Additional arguments are passed to the loader.
+        """
+        # Don't load if store was not successful
+        # If you want to force this, force store()
+        store_status = self.log["store_status"]
+        if store_status != "success":
+            log_msg(f"'{self.task_name}' has a stored_status of '{store_status}'...", "warning")
+            if store_status == "skipped":
+                log_msg(f"...so load is skipping as well.", "warning")
+                return self.set_log({ "load_status": "skipped" })
+            else:
+                log_msg(f"...have you run task.store() yet?", "error")
+                raise Exception("Attempting to load without storing first!")
+        # Don't load if already loaded, unless forced to
+        load_status = self.log["load_status"]
+        if load_status == "success":
+            log_msg(f"'{self.task_name}' already been loaded!", "warning")
+            if forced: log_msg(f"...forced load() to run anyway...", "warning")
+            else: return # Repeat of the same task - do not update log, do not load
+        # Don't load if last store hasn't been loaded yet
+        source_url = self.log["source_url"]
+        last_stored = self.get_last_stored(source_url)
+        if last_stored["load_status"] != "success":
+            log_msg(f"'{source_url}' was stored by '{last_stored['task_name']},' "
+                    f"but the load resulted in '{last_stored['load_status']}'!", "warning")
+            if forced: log_msg(f"...forced load() to run anyway...", "warning")
+            else:
+                log_msg(f"Load '{last_store['task_name']}' manually, or run with 'forced = True'.", "warning")
+                raise Exception("Attempting to load old tasks unloaded!")
+        fn = f"{self.task_name}.{self.file_type}"
+        blob_fn = f"{self.table_name}/{fn}"
+        local_fn = f"temp/{fn}"
+        retrieve(local_fn, blob_fn, container_url)
+        start = datetime.now()
+        row_count = loader(local_fn, self, **kwargs)
+        log_msg(f"'{self.task_name}' loaded ({row_count} rows) in {datetime.now() - start}s.", "success")
+        self.set_log({
+            "row_count": row_count,
+            "load_status": "success",
+            "loaded_at": datetime.now()
+        })
+
+    # # Unload a task from a database (TODO: This is SQL only, needs to be rewritten to be database agnostic)
+    # def unload(self):
+    #     cur = run_query(
+    #         f"DELETE FROM [{self.schema}].[{self.table_name}] WHERE task_name = '{self.task_name}'",
+    #         self.database, mode = "write")
+    #     log_msg(f"'{self.task_name}' unloaded ({cur.rowcount} rows) from {self.table_name}.", "warning")
+    #     self.set_log({ "loaded_at": None })
+
+
+    #=========#
+    #   Log   #
+    #=========#
     def get_log(self):
         cur = self.conn.cursor()
         cur.execute(
             f"SELECT * FROM [{self.schema}].[{self.log_table_name}] WHERE task_name = ?",
             self.task_name)
-        self.log = cur.fetchone()
-        log = self.log or [None] * 11
-        self.source_url = log[2]
-        self.file_type = log[3]
-        self.start_date = log[4]
-        self.end_date = log[5]
-        self.size = log[6]
-        self.hash = log[7]
-        self.row_count = log[8]
-        self.stored_at = log[9]
-        self.loaded_at = log[10]
-        return self.log
+        row = cur.fetchone()
+        if row: return parse_log(row)
 
     def new_log(self):
         cur = self.conn.cursor()
         cur.execute(
-            f"INSERT INTO [{self.schema}].[{self.log_table_name}](task_name, table_name) VALUES(?,?,?)",
+            f"INSERT INTO [{self.schema}].[{self.log_table_name}](task_name, table_name) VALUES(?,?)",
             self.task_name, self.table_name)
         cur.commit()
-        self.get_log()
+        self.log = self.get_log()
+        return self.log
 
-    # Alter properties in log
     def set_log(self, props):
         cur = self.conn.cursor()
         keys = ",".join([f"{k} = ?" for k in props.keys()])
@@ -65,71 +205,22 @@ class DBLoadTask:
             f"UPDATE [{self.schema}].[{self.log_table_name}] SET {keys} WHERE task_name = ?",
             *props.values(), self.task_name)
         cur.commit()
-        self.get_log()
+        self.log = self.get_log()
+        return self.log
 
-    # Store a local file and save metadata to task log
-    # Forced will overwrite existing stored file
-    def store(self, local_fn, container_url, source_url = "", forced = False):
-        if not self.log:
-            status(f"'{self.task_name}' hasn't been created! Run task.create() first.", "error")
-            sys.exit()
-        l_md5, l_size, l_mtime = local_props(local_fn)
-        if not forced and self.hash == l_md5:
-            status(f"'{self.task_name}' is already stored and the stored hash matches the local file.", "warning")
-        else:
-            ext = re.match(".*\.(\w+)$", local_fn)[1]
-            blob_fn = f"{self.table_name}/{self.task_name}.{ext}"
-            store(local_fn, blob_fn, container_url, forced)
-            status(f"'{self.task_name}' stored.", "success")
-            self.set_log({
-                "source_url": source_url,
-                "file_type": ext,
-                "hash": l_md5,
-                "size": l_size,
-                "stored_at": datetime.now()
-            })
-
-    # Load task into database and save metadata to task log
-    # Loader is a custom function returns a row count
-    # Forced will unload before loading
-    # Arguments for loader can be included in kwargs
-    def load(self, container_url, loader, forced = False, **kwargs):
-        if not self.stored_at:
-            status(f"'{self.task_name}' hasn't been stored! Run task.store() first.", "error")
-            sys.exit()
-        fn = f"{self.task_name}.{self.file_type}"
-        blob_fn = f"{self.table_name}/{fn}"
-        b_md5, b_size, b_mtime = blob_props(blob_fn, container_url)
-        if b_md5 != self.hash:
-            raise Exception("Hash of file stored on the blob doesn't match the logged hash! Something went wrong during .store()?")
-        elif not forced and self.loaded_at:
-            status(f"'{self.task_name}' is already loaded and the stored hash matches the local file. Use 'forced = True' if you really want to redo this.", "warning")
-        else:
-            local_fn = f"temp/{fn}"
-            retrieve(local_fn, blob_fn, container_url)
-            # if forced:
-            #     status(f"Force loading {self.task_name}...", "warning")
-            #     self.unload()
-            start = datetime.now()
-            row_count = loader(local_fn, self, **kwargs)
-            status(f"'{self.task_name}' loaded ({row_count} rows) in {datetime.now() - start}s.", "success")
-            self.set_log({
-                "row_count": row_count,
-                "loaded_at": datetime.now()
-            })
-
-    # # Unload a task from a database (TODO: This is SQL only, needs to be rewritten to be database agnostic)
-    # def unload(self):
-    #     cur = run_query(
-    #         f"DELETE FROM [{self.schema}].[{self.table_name}] WHERE task_name = '{self.task_name}'",
-    #         self.database, mode = "write")
-    #     status(f"'{self.task_name}' unloaded ({cur.rowcount} rows) from {self.table_name}.", "warning")
-    #     self.set_log({ "loaded_at": None })
+    def get_last_stored(self, source_url):
+        cur = self.conn.cursor()
+        cur.execute(
+            f"SELECT * FROM [{self.schema}].[{self.log_table_name}] "
+            f"WHERE source_url=? AND table_name=? AND task_name != ? "
+            f"AND store_status = 'success' "
+            f"ORDER BY stored_at DESC",
+            source_url, self.table_name, self.task_name)
+        row = cur.fetchone()
+        if row: return parse_log(row)
 
     # Print results so it can be read by Taskmaster
-    def dump_result(self):
-        if self.loaded_at and self.stored_at: status = "success"
-        else: status = "failed"
+    def dump_result(self, status):
         dump_result({
             "status": status,
             "task_name": self.task_name,
@@ -145,9 +236,26 @@ class DBLoadTask:
             "loaded_at": str(self.loaded_at)
         })
 
+def parse_log(row):
+    if not row: return None
+    return {
+        "task_name": row[0],
+        "table_name": row[1],
+        "source_url": row[2],
+        "file_type": row[3],
+        "size": row[4],
+        "hash": row[5],
+        "row_count": row[6],
+        "data_start": row[7],
+        "data_end": row[8],
+        "store_status": row[9],
+        "load_status": row[10],
+        "stored_at": row[11],
+        "loaded_at": row[12]
+    }
 
 # Colourful print very nice
-def status(message, status_type):
+def log_msg(message, status_type):
     if status_type == "success":
         colour = "\033[0;32m"
     elif status_type == "warning":
