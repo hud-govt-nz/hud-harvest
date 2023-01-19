@@ -305,7 +305,7 @@ def dbload_card(t):
         }, {
             "type":"FactSet",
             "facts":[{
-                "title": "Table name",
+                "title": "Target table",
                 "value": t["table_name"]
             }, {
                 "title": "Source URL",
