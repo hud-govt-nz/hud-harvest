@@ -25,6 +25,7 @@ STATUSES = {
 # Each task is one R/Python script
 class Taskmaster:
     def __init__(self, jobs, run_name = "test_run", scripts_path = "modules", log_db = None):
+        self.auto = True # Start in auto mode
         self.jobs = jobs
         self.run_name = run_name
         self.run_log = {}
@@ -274,6 +275,7 @@ class Taskmaster:
     #   Logging   #
     #=============#
     def print_status(self, logs_size = 6):
+        if self.auto: return # No in-place screen in auto mode
         if self.screen:
             for l in self.screen.split("\n"):
                 print('\033[1A', end='\x1b[2K')
@@ -288,8 +290,10 @@ class Taskmaster:
 
     def log_msg(self, message, level = "info"):
         message = message.strip()
-        self.log_msgs.append((datetime.now(), message, level))
+        log_msg = (datetime.now(), message, level)
+        self.log_msgs.append(log_msg)
         self.print_status()
+        if self.auto: print(draw_message(*log_msg)) # Print messages immediate in auto mode
 
     def create_run_log(self):
         if not self.log_db: return
@@ -377,22 +381,22 @@ def hash_output(t):
 #===============#
 #  Report/logs  #
 #===============#
+def draw_message(msg_datetime, message, level = "info"):
+    LEVEL_COLOURS = {
+        "bold": "\033[1m",
+        "error": "\033[1;31m",
+        "warning": "\033[1;33m",
+        "info": ""
+    }
+    return f"{msg_datetime:%H:%M:%S}: {LEVEL_COLOURS[level]}{message}\033[0m"
+
 def draw_message_box(messages, logs_size = 6):
     messages = messages[-logs_size:]
-    out = "\033[1;30m=======================  Log  =======================\033[0m\n"
-    out += "\n" * (logs_size - len(messages))
-    for d,m,l in messages:
-        if l == "bold":
-            colour = "\033[1m"
-        elif l == "error":
-            colour = "\033[1;31m"
-        elif l == "warning":
-            colour = "\033[1;33m"
-        else:
-            colour = ""
-        out += f"{d:%H:%M:%S}: {colour}{m}\033[0m\n"
-    out += "\033[1;30m=====================================================\033[0m"
-    return out
+    out = ["\033[1;30m=======================  Log  =======================\033[0m"]
+    out += [""] * (logs_size - len(messages))
+    out += [draw_message(*m) for m in messages]
+    out += ["\033[1;30m=====================================================\033[0m"]
+    return "\n".join(out)
 
 def draw_tree(tasks):
     top_level = [t for t in tasks if not t["parents"]]
