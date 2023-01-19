@@ -310,7 +310,7 @@ def bcp_loader(local_fn, task, if_exists = "append", delimiter = "|", encoding =
         raise Exception("if_exists must be 'replace' or 'append'!")
     # Read/clean file
     print(f"Reading '{local_fn}'...")
-    temp_fn = "bcp_temp.csv"
+    temp_fn = f"{local_fn}-bcp_temp.csv"
     start = datetime.now()
     cols = get_columns(table_name, schema, database) # Use datatypes from table
     dtype, parse_dates = sql_types_to_pandas_types(cols)
