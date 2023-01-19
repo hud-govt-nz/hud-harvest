@@ -13,6 +13,7 @@ STATUSES = {
     "running": "\033[1;32m",
     "warning": "\033[1;33m",
     "unchanged": "\033[1;30m",
+    "skipped": "\033[1;30m",
     "failed": "\033[1;31m",
     "default": "\033[1;31m",
     "reset": "\033[0m"

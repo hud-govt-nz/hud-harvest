@@ -282,6 +282,7 @@ def log_msg(message, status_type):
 def dbload_card(t):
     STATUS_COLOUR = {
         "success": "good",
+        "skipped": "light",
         "failed": "attention"
     }
     return {
