@@ -149,14 +149,14 @@ class DBLoadTask:
         # Don't load if last store hasn't been loaded yet
         source_url = self.log["source_url"]
         last_stored = self.get_last_stored(source_url)
-        if last_stored["load_status"] != "success":
+        if last_stored and last_stored["load_status"] != "success":
             log_msg(f"'{source_url}' was stored by '{last_stored['task_name']},' "
                     f"but the load resulted in '{last_stored['load_status']}'!", "warning")
             if forced: log_msg(f"...forced load() to run anyway...", "warning")
             else:
                 log_msg(f"Load '{last_store['task_name']}' manually, or run with 'forced = True'.", "warning")
                 raise Exception("Attempting to load old tasks unloaded!")
-        fn = f"{self.task_name}.{self.file_type}"
+        fn = f"{self.task_name}.{self.log['file_type']}"
         blob_fn = f"{self.table_name}/{fn}"
         local_fn = f"temp/{fn}"
         retrieve(local_fn, blob_fn, container_url)
