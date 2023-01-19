@@ -1,6 +1,6 @@
 # Tasker
 # Task management, database loading and logging layer on top of keeper
-import sys
+import os, sys
 import re
 import pandas as pd
 import numpy as np
@@ -163,6 +163,7 @@ class DBLoadTask:
         start = datetime.now()
         row_count = loader(local_fn, self, **kwargs)
         log_msg(f"'{self.task_name}' loaded ({row_count} rows) in {datetime.now() - start}s.", "success")
+        os.remove(local_fn) # Clean up
         self.set_log({
             "row_count": row_count,
             "load_status": "success",
