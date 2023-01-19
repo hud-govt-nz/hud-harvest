@@ -245,9 +245,11 @@ class DBLoadTask:
             log["status"] = "skipped"
         else:
             log["status"] = "error"
-        log["hash"] = log["hash"].hex()
+        if log["hash"]:
+            log["hash"] = log["hash"].hex()
         for k in ["data_start", "data_end", "stored_at", "loaded_at"]:
-            if log[k]: log[k] = str(log[k])
+            if log[k]:
+                log[k] = str(log[k])
         dump_result(log)
 
 def parse_log(row):
