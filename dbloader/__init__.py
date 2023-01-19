@@ -82,7 +82,8 @@ class DBLoadTask:
         if store_status == "success":
             log_msg(f"'{self.task_name}' already been stored!", "warning")
             if forced: log_msg(f"...forcing store() to continue...", "warning")
-            else: return # Repeat of the same task - do not update log, do not store
+            else:
+                return False # Repeat of the same task - do not update log, do not store
         # Don't store if the file matches the previous stored file with the
         # same table_name/source_url, unless forced to
         last_stored = self.get_last_stored(source_url)
@@ -92,22 +93,33 @@ class DBLoadTask:
                    f"{last_stored['stored_at']:%Y-%m-%d %H:%M:%S} by "
                    f"'{last_stored['task_name']}'...", "warning")
             if forced: log_msg(f"...forcing store() to continue...", "warning")
-            else: return self.set_log({
+            else:
+                self.set_log({
+                    "source_url": source_url,
+                    "store_status": "skipped"
+                })
+                return False
+        ext = re.match(".*\.(\w+)$", local_fn)[1]
+        blob_fn = f"{self.table_name}/{self.task_name}.{ext}"
+        res = store(local_fn, blob_fn, container_url, forced)
+        if not res:
+            self.set_log({
                 "source_url": source_url,
                 "store_status": "skipped"
             })
-        ext = re.match(".*\.(\w+)$", local_fn)[1]
-        blob_fn = f"{self.table_name}/{self.task_name}.{ext}"
-        store(local_fn, blob_fn, container_url, forced)
-        self.set_log({
-            "source_url": source_url,
-            "file_type": ext,
-            "hash": l_md5,
-            "size": l_size,
-            "store_status": "success",
-            "stored_at": datetime.now()
-        })
-        log_msg(f"'{self.task_name}' stored.", "success")
+            log_msg(f"'{self.task_name}' store has been skipped.", "warning")
+            return False
+        else:
+            self.set_log({
+                "source_url": source_url,
+                "file_type": ext,
+                "hash": l_md5,
+                "size": l_size,
+                "store_status": "success",
+                "stored_at": datetime.now()
+            })
+            log_msg(f"'{self.task_name}' stored.", "success")
+            return True
 
     def load(self, container_url, loader, forced = False, **kwargs):
         """
@@ -136,7 +148,8 @@ class DBLoadTask:
             log_msg(f"'{self.task_name}' has a stored_status of '{store_status}'...", "warning")
             if store_status == "skipped":
                 log_msg(f"...so load is skipping as well.", "warning")
-                return self.set_log({ "load_status": "skipped" })
+                self.set_log({ "load_status": "skipped" })
+                return False
             else:
                 log_msg(f"...have you run task.store() yet?", "error")
                 raise Exception("Attempting to load without storing first!")
@@ -145,7 +158,8 @@ class DBLoadTask:
         if load_status == "success":
             log_msg(f"'{self.task_name}' already been loaded!", "warning")
             if forced: log_msg(f"...forced load() to run anyway...", "warning")
-            else: return # Repeat of the same task - do not update log, do not load
+            else:
+                return False # Repeat of the same task - do not update log, do not load
         # Don't load if last store hasn't been loaded yet
         source_url = self.log["source_url"]
         last_stored = self.get_last_stored(source_url)
@@ -169,6 +183,7 @@ class DBLoadTask:
             "load_status": "success",
             "loaded_at": datetime.now()
         })
+        return True
 
     # # Unload a task from a database (TODO: This is SQL only, needs to be rewritten to be database agnostic)
     # def unload(self):
