@@ -446,6 +446,7 @@ def simple_run_card(run_name, run_args, jobs_count, tasks_count, tasks_succeeded
     }
     return {
         "type": "Container",
+        "style": "accent",
         "bleed": True,
         "items": [{
             "type": "TextBlock",
