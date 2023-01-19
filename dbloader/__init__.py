@@ -220,21 +220,19 @@ class DBLoadTask:
         if row: return parse_log(row)
 
     # Print results so it can be read by Taskmaster
-    def dump_result(self, status):
-        dump_result({
-            "status": status,
-            "task_name": self.task_name,
-            "table_name": self.table_name,
-            "source_url": self.source_url,
-            "file_type": self.file_type,
-            "start_date": str(self.start_date),
-            "end_date": str(self.end_date),
-            "size": self.size,
-            "hash": self.hash.hex(),
-            "row_count": self.row_count,
-            "stored_at": str(self.stored_at),
-            "loaded_at": str(self.loaded_at)
-        })
+    def dump_result(self):
+        log = self.log.copy()
+        status = (log["load_status"], log["load_status"])
+        if status == ("success", "success"):
+            log["status"] = "success"
+        elif status == ("skipped", "skipped"):
+            log["status"] = "skipped"
+        else:
+            log["status"] = "error"
+        log["hash"] = log["hash"].hex()
+        for k in ["data_start", "data_end", "stored_at", "loaded_at"]:
+            if log[k]: log[k] = str(log[k])
+        dump_result(log)
 
 def parse_log(row):
     if not row: return None
@@ -284,7 +282,7 @@ def dbload_card(t):
             "weight": "bolder",
             "spacing": "none",
             "color": STATUS_COLOUR[t["status"]],
-            "text": t["status"]
+            "text": t["status"].upper()
         }, {
             "type":"FactSet",
             "facts":[{
@@ -297,17 +295,23 @@ def dbload_card(t):
                 "title": "File type",
                 "value": t["file_type"]
             }, {
-                "title": "Start date",
-                "value": t["start_date"]
-            }, {
-                "title": "End date",
-                "value": t["end_date"]
-            }, {
                 "title": "Size",
                 "value": t["size"]
             }, {
                 "title": "Row count",
                 "value": t["row_count"]
+            }, {
+                "title": "Data start",
+                "value": t["data_start"]
+            }, {
+                "title": "Data end",
+                "value": t["data_end"]
+            }, {
+                "title": "Store status",
+                "value": t["store_status"]
+            }, {
+                "title": "Load status",
+                "value": t["load_status"]
             }, {
                 "title": "Stored at",
                 "value": t["stored_at"]
