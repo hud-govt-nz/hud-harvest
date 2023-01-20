@@ -6,7 +6,6 @@ from datetime import datetime
 from sqltools import insert, update, delete
 from chatter import send_card
 
-ROOT_PATH = pathlib.Path(__file__).parent.absolute()
 STATUSES = {
     "unassigned": "\033[0;35m",
     "success": "\033[0;32m",
