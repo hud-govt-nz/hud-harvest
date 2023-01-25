@@ -2,6 +2,8 @@ DROP TABLE [source].[dbtask_logs];
 CREATE TABLE [source].[dbtask_logs] (
     task_name VARCHAR(40) PRIMARY KEY, -- Unique name describing this task
     table_name VARCHAR(40), -- Where is the data being loaded to
+    schema_name VARCHAR(40), -- Where is the data being loaded to
+    database_name VARCHAR(40), -- Where is the data being loaded to
     source_url VARCHAR(max), -- URL to help identify where the data came from
     file_type VARCHAR(10),
     size BIGINT,

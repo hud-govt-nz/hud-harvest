@@ -207,9 +207,18 @@ class DBLoadTask:
 
     def new_log(self):
         cur = self.conn.cursor()
+        props = {
+            "task_name": self.task_name,
+            "table_name": self.table_name,
+            "schema_name": self.schema,
+            "database_name": self.database
+        }
+        keys = ",".join(props.keys())
+        wildcards = ','.join(['?'] * len(props))
         cur.execute(
-            f"INSERT INTO [{self.schema}].[{self.log_table_name}](task_name, table_name) VALUES(?,?)",
-            self.task_name, self.table_name)
+            f"INSERT INTO [{self.schema}].[{self.log_table_name}]({keys}) "
+            f"VALUES({wildcards})",
+            *props.values())
         cur.commit()
         self.log = self.get_log()
         return self.log
@@ -257,17 +266,19 @@ def parse_log(row):
     return {
         "task_name": row[0],
         "table_name": row[1],
-        "source_url": row[2],
-        "file_type": row[3],
-        "size": row[4],
-        "hash": row[5],
-        "row_count": row[6],
-        "data_start": row[7],
-        "data_end": row[8],
-        "store_status": row[9],
-        "load_status": row[10],
-        "stored_at": row[11],
-        "loaded_at": row[12]
+        "schema_name": row[2],
+        "database_name": row[3],
+        "source_url": row[4],
+        "file_type": row[5],
+        "size": row[6],
+        "hash": row[7],
+        "row_count": row[8],
+        "data_start": row[9],
+        "data_end": row[10],
+        "store_status": row[11],
+        "load_status": row[12],
+        "stored_at": row[13],
+        "loaded_at": row[14]
     }
 
 # Colourful print very nice
