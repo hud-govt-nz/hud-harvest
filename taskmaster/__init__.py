@@ -249,7 +249,7 @@ class Taskmaster:
     # If task returned a code != 0
     def on_task_fail(self, t, stdout, stderr):
         t["status"] = "failed"
-        if forced: return
+        if self.forced: return
         self.dump = (t, stdout, stderr)
 
     def on_task_complete(self, t):
