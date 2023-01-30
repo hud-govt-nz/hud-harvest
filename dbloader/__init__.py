@@ -292,11 +292,24 @@ def log_msg(message, status_type):
     print(f"{colour}{message}\033[0m")
 
 # Generate a DBLoader task card for sending via Teams
-def dbload_card(t):
+def dbload_card(t, facts = None):
     STATUS_COLOUR = {
         "success": "good",
         "skipped": "light",
         "failed": "attention"
+    }
+    facts = facts or {
+        "Target table": t["table_name"],
+        "Source URL": t["source_url"],
+        "File type": t["file_type"],
+        "Size": t["size"],
+        "Row count": t["row_count"],
+        "Data start": t["data_start"],
+        "Data end": t["data_end"],
+        "Store status": t["store_status"],
+        "Load status": t["load_status"],
+        "Stored at": t["stored_at"],
+        "Loaded at": t["loaded_at"]
     }
     return {
         "type": "Container",
@@ -314,41 +327,8 @@ def dbload_card(t):
             "color": STATUS_COLOUR[t["status"]],
             "text": t["status"].upper()
         }, {
-            "type":"FactSet",
-            "facts":[{
-                "title": "Target table",
-                "value": t["table_name"]
-            }, {
-                "title": "Source URL",
-                "value": t["source_url"]
-            }, {
-                "title": "File type",
-                "value": t["file_type"]
-            }, {
-                "title": "Size",
-                "value": t["size"]
-            }, {
-                "title": "Row count",
-                "value": t["row_count"]
-            }, {
-                "title": "Data start",
-                "value": t["data_start"]
-            }, {
-                "title": "Data end",
-                "value": t["data_end"]
-            }, {
-                "title": "Store status",
-                "value": t["store_status"]
-            }, {
-                "title": "Load status",
-                "value": t["load_status"]
-            }, {
-                "title": "Stored at",
-                "value": t["stored_at"]
-            }, {
-                "title": "Loaded at",
-                "value": t["loaded_at"]
-            }]
+            "type": "FactSet",
+            "facts": [{"title": k, "value": v} for k,v in facts.items()]
         }]
     }
 
