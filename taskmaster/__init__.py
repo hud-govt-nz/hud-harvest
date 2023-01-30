@@ -189,11 +189,13 @@ class Taskmaster:
         try:
             stdout, stderr = [s.decode().strip() for s in await proc.communicate()]
             t["end"] = datetime.now()
+            t["stdout"] = stdout
+            t["stderr"] = stderr
             assert proc.returncode == 0
-            self.on_task_complete(t, stdout, stderr)
+            self.on_task_success(t, stdout, stderr)
             self.log_msg(f"{t['script']} finished with status '{t['status']}'.")
         except AssertionError:
-            self.on_task_fail(t, stdout, stderr, forced)
+            self.on_task_fail(t, stdout, stderr)
             self.log_msg(f"{t['script']} failed!", "error")
             if not forced: raise # Ignore fails if forced
         finally:
@@ -201,6 +203,7 @@ class Taskmaster:
                 proc.terminate()
                 await proc.wait() # Wait for subprocess to terminate
                 t["status"] = "terminated"
+            self.on_task_complete(t)
         return t
 
     # Verifies a single task and compiles everything it needs to run
@@ -239,15 +242,18 @@ class Taskmaster:
         t["args"] = self.prep_base_args(t)
 
     # If task returned a code == 0
-    def on_task_complete(self, t, stdout, stderr):
+    def on_task_success(self, t, stdout, stderr):
         r = read_result(stdout)
         t.update(r) # All outputs are saved to the task
 
     # If task returned a code != 0
-    def on_task_fail(self, t, stdout, stderr, forced):
+    def on_task_fail(self, t, stdout, stderr):
         t["status"] = "failed"
         if forced: return
         self.dump = (t, stdout, stderr)
+
+    def on_task_complete(self, t):
+        pass
 
     # When the entire run is finished
     def on_run_complete(self):
