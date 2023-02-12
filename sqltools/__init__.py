@@ -165,6 +165,8 @@ def get_conn_token():
 def pyodbc_conn(database):
     DB_CONN = os.getenv("DB_CONN")
     if not DB_CONN: raise Exception("'DB_CONN' not set in '.env'! Read the 'Setting secrets' section in the README.")
+    DB_CONN = re.sub("uid=[^;]+;", "", DB_CONN, flags = re.IGNORECASE)
+    DB_CONN = re.sub("pwd=[^;]+;", "", DB_CONN, flags = re.IGNORECASE)
     conn = pyodbc.connect(f"{DB_CONN};Database={database};", attrs_before = get_conn_token())
     return conn
 
