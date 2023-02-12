@@ -7,7 +7,7 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 
 # Download using a Selenium browser (i.e. Automated bot browser)
-def selenium_download(src_url, dst_fn, max_wait = 60):
+def selenium_download(src_url, dst_fn, max_wait = 300):
     display = Display(visible=0, size=(800, 600)) # Display into the void, so we can run without a display
     display.start()
     options = Options()
