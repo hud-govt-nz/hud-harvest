@@ -168,7 +168,7 @@ class DBLoadTask:
                     f"but the load resulted in '{last_stored['load_status']}'!", "warning")
             if forced: log_msg(f"...forced load() to run anyway...", "warning")
             else:
-                log_msg(f"Load '{last_store['task_name']}' manually, or run with 'forced = True'.", "warning")
+                log_msg(f"Load '{last_stored['task_name']}' manually, or run with 'forced = True'.", "warning")
                 raise Exception("Attempting to load old tasks unloaded!")
         fn = f"{self.task_name}.{self.log['file_type']}"
         blob_fn = f"{self.table_name}/{fn}"
