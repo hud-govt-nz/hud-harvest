@@ -7,12 +7,13 @@ def send_msg(msg):
     card.text(msg)
     card.send()
 
-def send_card(body, entities = []):
+def send_card(body, entities = [], summary = ""):
     card = pymsteams.connectorcard(TEAMS_WEBHOOK)
     card.payload = {
         "type": "message",
         "attachments": [{
             "contentType": "application/vnd.microsoft.card.adaptive",
+            "summary": summary,
             "content": {
                 "type": "AdaptiveCard",
                 "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",

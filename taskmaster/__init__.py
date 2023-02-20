@@ -275,7 +275,12 @@ class Taskmaster:
                 "name": "Keith Ng"
             }
         }]
-        send_card(body, entities)
+        summary = (
+            f"{self.run_log['status'].upper()}: "
+            f"{self.run_log['tasks_succeeded']} tasks succeeded, "
+            f"{self.run_log['tasks_failed']} failed, "
+            f"{self.run_log['tasks_skipped']} skipped")
+        send_card(body, entities, summary)
         print("Done.")
 
 
