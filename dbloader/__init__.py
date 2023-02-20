@@ -161,6 +161,7 @@ class DBLoadTask:
             else:
                 return False # Repeat of the same task - do not update log, do not load
         # Don't load if last store hasn't been loaded yet
+        # This is cumbersome, but ensures that files are not loaded out of order
         source_url = self.log["source_url"]
         last_stored = self.get_last_stored(source_url)
         if last_stored and last_stored["load_status"] != "success":
