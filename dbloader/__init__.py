@@ -108,6 +108,7 @@ class DBLoadTask:
                 "store_status": "skipped"
             })
             log_msg(f"'{self.task_name}' store has been skipped.", "warning")
+            os.remove(local_fn) # Clean up
             return False
         else:
             self.set_log({
