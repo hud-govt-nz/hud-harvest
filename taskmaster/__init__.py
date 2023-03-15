@@ -1,5 +1,5 @@
 #!/bin/python3
-import os, sys, argparse, pathlib, logging
+import os, sys, argparse, pathlib
 import re, json, asyncio, hashlib
 import pandas as pd
 from datetime import datetime
