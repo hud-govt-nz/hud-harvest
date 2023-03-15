@@ -24,6 +24,7 @@ STATUSES = {
 # Each task is one R/Python script
 class Taskmaster:
     def __init__(self, jobs, run_name = "test_run", scripts_path = "modules", log_db = None):
+        print(f"Initialising run '{run_name}'...")
         self.auto = True # Start in auto mode
         self.jobs = jobs
         self.run_name = run_name
