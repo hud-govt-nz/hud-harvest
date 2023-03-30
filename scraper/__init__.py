@@ -93,7 +93,7 @@ class StatsNZ:
 
     # Returns the latest information release page for a given filter
     def get_latest_release_url(filters):
-        url = f"https://www.stats.govt.nz/publications?filters={filters}"
+        url = f"https://www.stats.govt.nz/information-releases/?filters={filters}"
         data = StatsNZ.get_page_data(url)
         pages = data["PaginatedBlockPages"]
         latest = sorted(pages, key = lambda d: d["PageDate"])[-1]
