@@ -1,18 +1,18 @@
-DROP TABLE [source].[dbtask_logs];
-CREATE TABLE [source].[dbtask_logs] (
-    task_name VARCHAR(40) PRIMARY KEY, -- Unique name describing this task
-    table_name VARCHAR(40), -- Where is the data being loaded to
-    schema_name VARCHAR(40), -- Where is the data being loaded to
-    database_name VARCHAR(40), -- Where is the data being loaded to
-    source_url VARCHAR(max), -- URL to help identify where the data came from
-    file_type VARCHAR(10),
-    size BIGINT,
-    hash VARBINARY(1024),
-    row_count INT,
-    data_start DATE, -- Optional, makes it easier to select a date range
-    data_end DATE, -- Optional, makes it easier to select a date range
-    store_status VARCHAR(20),
-    load_status VARCHAR(20),
-    stored_at DATETIME,
-    loaded_at DATETIME
+DROP TABLE [Source].[DBTask_Logs];
+CREATE TABLE [Source].[DBTask_Logs] (
+    Task_Name VARCHAR(40) PRIMARY KEY, -- Unique name describing this task
+    Table_Name VARCHAR(40), -- Where is the data being loaded to
+    Schema_Name VARCHAR(40), -- Where is the data being loaded to
+    Database_Name VARCHAR(40), -- Where is the data being loaded to
+    Source_URL VARCHAR(max), -- URL to help identify where the data came from
+    File_Type VARCHAR(10),
+    Size BIGINT,
+    Hash VARBINARY(1024),
+    Row_Count INT,
+    Data_Start DATE, -- Optional, makes it easier to select a date range
+    Data_End DATE, -- Optional, makes it easier to select a date range
+    Store_Status VARCHAR(20),
+    Load_Status VARCHAR(20),
+    Stored_At DATETIME,
+    Loaded_At DATETIME
 );
