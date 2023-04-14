@@ -108,6 +108,13 @@ def make_insert_query(src_cols, table_name, schema, database, strict_mode = True
         return (f"INSERT INTO [{schema}].[{table_name}]({cols_str}) "
                 f"VALUES ({','.join(['?'] * len(usable_cols))})")
 
+# Need to setinputsize to make geometries work with fast_executemany
+# https://github.com/mkleehammer/pyodbc/issues/490
+def set_input_sizes(cur, table_name, schema, database):
+    tbl_cols = get_columns(table_name, schema, database)
+    input_sizes = [(pyodbc.SQL_WVARCHAR, 0, 0) if t == "geometry" else 0 for t in tbl_cols.values()]
+    cur.setinputsizes(input_sizes)
+
 
 #=============#
 #   Columns   #
@@ -177,7 +184,7 @@ def pyodbc_conn(database):
 # Load a CSV into SQL using INSERT + fast_executemany. Has acceptable speeds
 # and very good for debugging, but you should switch to bcp_loader for
 # production where you just want it to go real fast.
-def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", strict_mode = True, batch_size = 1000):
+def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", fast_executemany = True, strict_mode = True, batch_size = 1000):
     if batch_size > 10000:
         print("\033[1;33mCAUTION! batch_size > 10000 is not recommended!\033[0m")
     task_name = task.task_name
@@ -198,7 +205,9 @@ def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", strict_
         print(f"Loading data into [{schema}].[{table_name}]...")
         conn = pyodbc_conn(database)
         cur = conn.cursor()
-        cur.fast_executemany = True
+        if fast_executemany:
+            cur.fast_executemany = True
+            set_input_sizes(cur, table_name, schema, database)
         row_count = 0
         start = datetime.now()
         while True:
@@ -284,7 +293,7 @@ def find_bad_columns(bad_row, src_cols, table_name, schema, conn, max_omit = 3, 
     else:
         cur.rollback()
         print(bad_row)
-        print("\033[1;31mNo combination of column removals worked, sorry.\033[0m")
+        print("\033[1;31mNo combination of column removals worked, sorry. Try turning fast_executemany off?\033[0m")
 
 
 #===============#
