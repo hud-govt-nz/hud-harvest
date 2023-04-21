@@ -84,12 +84,17 @@ def truncate(table_name, schema, database, commit = True):
         if commit: cur.commit()
 
 # Generate insert query for bulk inserts
-def make_insert_query(src_cols, table_name, schema, database, strict_mode = True):
-    tbl_cols = get_columns(table_name, schema, database).keys()
+def make_insert_query(src_cols, table_name, schema, database, strict_mode = True, geography_crc = 4167):
+    tbl_cols = get_columns(table_name, schema, database)
     src_cols = list(src_cols)
     missing_cols = [c for c in tbl_cols if c not in src_cols]
     extra_cols = [c for c in src_cols if c not in tbl_cols]
     usable_cols = [c for c in src_cols if c in tbl_cols]
+    # Preprocess for special types
+    special_types = {
+        "geography": f"geography::STGeomFromText(?, {geography_crc}).MakeValid()"
+    }
+    val_str = [special_types.get(v) or "?" for v in tbl_cols.values()]
     # Warn or break on errors
     if missing_cols or extra_cols:
         print(f"\033[1;33mExpected columns (from table): {tbl_cols}\033[0m")
@@ -100,13 +105,13 @@ def make_insert_query(src_cols, table_name, schema, database, strict_mode = True
     # Exact match, no need to name columns
     elif [c.lower() for c in src_cols] == [c.lower() for c in tbl_cols]:
         return (f"INSERT INTO [{schema}].[{table_name}] "
-                f"VALUES ({','.join(['?'] * len(usable_cols))})")
+                f"VALUES ({','.join(val_str)})")
     # Otherwise name columns - remember you can have identical columns in the wrong order
     else:
         print(f"\033[1;33mUsing named INSERTs (might be slower - ensure columns are identical to avoid this)...\033[0m")
         cols_str = ','.join([f"[{c}]" for c in usable_cols])
         return (f"INSERT INTO [{schema}].[{table_name}]({cols_str}) "
-                f"VALUES ({','.join(['?'] * len(usable_cols))})")
+                f"VALUES ({','.join(val_str)})")
 
 # Need to setinputsize to make geometries work with fast_executemany
 # https://github.com/mkleehammer/pyodbc/issues/490
@@ -184,7 +189,7 @@ def pyodbc_conn(database):
 # Load a CSV into SQL using INSERT + fast_executemany. Has acceptable speeds
 # and very good for debugging, but you should switch to bcp_loader for
 # production where you just want it to go real fast.
-def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", fast_executemany = True, strict_mode = True, batch_size = 1000):
+def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", fast_executemany = True, strict_mode = True, geography_crc = 4167, batch_size = 1000):
     if batch_size > 10000:
         print("\033[1;33mCAUTION! batch_size > 10000 is not recommended!\033[0m")
     task_name = task.task_name
@@ -201,7 +206,7 @@ def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", fast_ex
     with open(local_fn, "r", encoding = encoding) as f:
         reader = csv.reader(f)
         src_cols = next(reader) + ["task_name"]
-        query = make_insert_query(src_cols, table_name, schema, database, strict_mode)
+        query = make_insert_query(src_cols, table_name, schema, database, strict_mode, geography_crc)
         print(f"Loading data into [{schema}].[{table_name}]...")
         conn = pyodbc_conn(database)
         cur = conn.cursor()
