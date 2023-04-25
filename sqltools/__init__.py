@@ -84,34 +84,31 @@ def truncate(table_name, schema, database, commit = True):
         if commit: cur.commit()
 
 # Generate insert query for bulk inserts
-def make_insert_query(src_cols, table_name, schema, database, strict_mode = True, geography_crc = 4167):
-    tbl_cols = get_columns(table_name, schema, database)
-    src_cols = list(src_cols)
-    missing_cols = [c for c in tbl_cols if c not in src_cols]
-    extra_cols = [c for c in src_cols if c not in tbl_cols]
-    usable_cols = [c for c in src_cols if c in tbl_cols]
-    # Preprocess for special types
-    special_types = {
-        "geography": f"geography::STGeomFromText(?, {geography_crc}).MakeValid()"
-    }
-    val_str = [special_types.get(v) or "?" for v in tbl_cols.values()]
-    # Warn or break on errors
-    if missing_cols or extra_cols:
-        print(f"\033[1;33mExpected columns (from table): {tbl_cols}\033[0m")
-        print(f"\033[1;33mActual columns (from data): {src_cols}\033[0m")
-        print(f"\033[1;33mMissing columns: {missing_cols}\033[0m")
-        print(f"\033[1;33mUnexpected columns: {extra_cols}\033[0m")
-        if strict_mode: raise Exception(f"Expected columns are missing or unexpected columns are present!")
+def make_insert_query(src_cols, table_name, schema, database, strict_mode = True):
+    tbl_cols = get_columns(table_name, schema, database).keys()
+    cols_str = ','.join([f"[{c}]" for c in src_cols])
+    vals_str = ','.join(["?" for k in src_cols])
     # Exact match, no need to name columns
-    elif [c.lower() for c in src_cols] == [c.lower() for c in tbl_cols]:
+    if [c.lower() for c in src_cols] == [c.lower() for c in tbl_cols]:
         return (f"INSERT INTO [{schema}].[{table_name}] "
-                f"VALUES ({','.join(val_str)})")
-    # Otherwise name columns - remember you can have identical columns in the wrong order
+                f"VALUES ({vals_str})")
     else:
+        missing_cols = tbl_cols - src_cols
+        extra_cols = src_cols - tbl_cols
+        # Warn or break on errors
+        if missing_cols or extra_cols:
+            print(f"\033[1;33mExpected columns (from table): {tbl_cols}\033[0m")
+            print(f"\033[1;33mActual columns (from data): {src_cols}\033[0m")
+            print(f"\033[1;33mMissing columns: {missing_cols}\033[0m")
+            print(f"\033[1;33mUnexpected columns: {extra_cols}\033[0m")
+            if strict_mode:
+                raise Exception(f"Expected columns are missing or unexpected columns are present, and we're in strict_mode!")
+            elif extra_cols:
+                raise Exception(f"Unexpected columns are present!")
+        # Slack mode, for missing columns or columns in the wrong order
         print(f"\033[1;33mUsing named INSERTs (might be slower - ensure columns are identical to avoid this)...\033[0m")
-        cols_str = ','.join([f"[{c}]" for c in usable_cols])
         return (f"INSERT INTO [{schema}].[{table_name}]({cols_str}) "
-                f"VALUES ({','.join(val_str)})")
+                f"VALUES ({vals_str})")
 
 # Need to setinputsize to make geometries work with fast_executemany
 # https://github.com/mkleehammer/pyodbc/issues/490
@@ -206,7 +203,7 @@ def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", fast_ex
     with open(local_fn, "r", encoding = encoding) as f:
         reader = csv.reader(f)
         src_cols = next(reader) + ["task_name"]
-        query = make_insert_query(src_cols, table_name, schema, database, strict_mode, geography_crc)
+        query = make_insert_query(src_cols, table_name, schema, database)
         print(f"Loading data into [{schema}].[{table_name}]...")
         conn = pyodbc_conn(database)
         cur = conn.cursor()
