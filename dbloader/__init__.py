@@ -58,7 +58,7 @@ class DBLoadTask:
     #=============#
     #   Actions   #
     #=============#
-    def store(self, local_fn, container_url, source_url = "", forced = False):
+    def store(self, local_fn, container_url, blob_path = None, source_url = "", forced = False):
         """
         Stores a local file in the blob.
 
@@ -100,7 +100,8 @@ class DBLoadTask:
                 })
                 return False
         ext = re.match(".*\.(\w+)$", local_fn)[1]
-        blob_fn = f"{self.table_name}/{self.task_name}.{ext}"
+        blob_path = blob_path or self.table_name
+        blob_fn = f"{blob_path}/{self.task_name}.{ext}"
         res = store(local_fn, blob_fn, container_url, forced)
         if not res:
             self.set_log({
@@ -122,7 +123,7 @@ class DBLoadTask:
             log_msg(f"'{self.task_name}' stored.", "success")
             return True
 
-    def load(self, container_url, loader, forced = False, **kwargs):
+    def load(self, container_url, loader, blob_path = None, forced = False, **kwargs):
         """
         Loads a data file into the database.
 
@@ -173,7 +174,8 @@ class DBLoadTask:
                 log_msg(f"Load '{last_stored['task_name']}' manually, or run with 'forced = True'.", "warning")
                 raise Exception("Attempting to load old tasks unloaded!")
         fn = f"{self.task_name}.{self.log['file_type']}"
-        blob_fn = f"{self.table_name}/{fn}"
+        blob_path = blob_path or self.table_name
+        blob_fn = f"{blob_path}/{fn}"
         local_fn = f"temp/{fn}"
         retrieve(local_fn, blob_fn, container_url)
         start = datetime.now()
