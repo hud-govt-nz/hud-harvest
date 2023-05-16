@@ -79,41 +79,50 @@ class Taskmaster:
             "tasks_count": len(tasks)
         })
         self.print_status() # Print once to allocate lines
-        try:
-            while True:
-                ready = [t for t in tasks if self.is_ready(t, forced)]
-                if ready:
-                    curr_tasks = [self.run_task(t, forced) for t in ready]
-                    operation = gather_with_concurrency(curr_tasks, max_tasks)
-                    res = asyncio.run(operation)
-                else:
-                    # No more tasks ready to run, skip any outstanding tasks
-                    for t in tasks:
-                        if t["status"] == "unassigned":
-                            t["status"] = "skipped"
-                    self.print_status()
-                    run_status = "finished"
+        while True:
+            ready = [t for t in tasks if self.is_ready(t, forced)]
+            if ready:
+                # This whole block should be rewritten in Runner or TaskGroup
+                # However, this requires Python 3.11, so holding off for now
+                # https://docs.python.org/3/library/asyncio-runner.html
+                # https://docs.python.org/3/library/asyncio-task.html#asyncio.TaskGroup
+                curr_tasks = [self.run_task(t, forced) for t in ready]
+                operation = gather_with_concurrency(curr_tasks, max_tasks)
+                loop = asyncio.get_event_loop()
+                try:
+                    loop.run_until_complete(operation)
+                except KeyboardInterrupt:
+                    self.log_msg("Aborting...", "warning")
+                    run_status = "aborted"
+                    loop.stop()
                     break
-        except KeyboardInterrupt:
-            self.log_msg("Aborting...", "warning")
-            run_status = "aborted"
-        except AssertionError:
-            self.log_msg("Halting due to script error!", "error")
-            run_status = "halted"
-        except:
-            self.log_msg("Crashed!", "error")
-            run_status = "crashed"
-            raise
-        finally:
-            self.set_run_log({
-                "status": run_status,
-                "tasks_succeeded": sum([t["status"] == "success" for t in tasks]),
-                "tasks_failed": sum([t["status"] == "failed" for t in tasks]),
-                "tasks_skipped": sum([t["status"] == "skipped" for t in tasks]),
-                "finished_at": datetime.now()
-            })
-            self.log_msg(f"\n{run_status.upper()} in {datetime.now() - start}s.", "bold")
-            self.on_run_complete()
+                except AssertionError:
+                    self.log_msg("Halting due to script error!", "error")
+                    run_status = "halted"
+                    loop.stop()
+                    break
+                except:
+                    self.log_msg("Crashed!", "error")
+                    run_status = "crashed"
+                    loop.stop()
+                    raise
+            else:
+                # No more tasks ready to run, skip any outstanding tasks
+                for t in tasks:
+                    if t["status"] == "unassigned":
+                        t["status"] = "skipped"
+                self.print_status()
+                run_status = "finished"
+                break
+        self.set_run_log({
+            "status": run_status,
+            "tasks_succeeded": sum([t["status"] == "success" for t in tasks]),
+            "tasks_failed": sum([t["status"] == "failed" for t in tasks]),
+            "tasks_skipped": sum([t["status"] == "skipped" for t in tasks]),
+            "finished_at": datetime.now()
+        })
+        self.log_msg(f"\n{run_status.upper()} in {datetime.now() - start}s.", "bold")
+        self.on_run_complete()
 
     # Break jobs down into interdependent tasks
     def list_tasks(self, jobs, only_run = None):
