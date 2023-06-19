@@ -22,6 +22,8 @@ def download(src_url, dst_fn):
         print(f"...as a chunked transfer...")
         if dst.exists():
             print("CAUTION: Can't match sized on a chunked transfer, overwriting...")
+    elif res.headers.get("Content-Encoding") in ["gzip"]:
+        print("CAUTION: Can't match sized on a compressed transfer, overwriting...")
     elif res.headers.get("Content-Length"):
         src_size = int(res.headers["Content-Length"])
         print(f"...file is {src_size} bytes...")
