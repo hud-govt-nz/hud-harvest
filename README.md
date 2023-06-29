@@ -16,15 +16,15 @@ sudo dpkg -i google-chrome-stable_current_amd64.deb
 sudo apt install xvfb
 ```
 
-Clone the repo then `pip install -e` to the local path. The `-e` will keep the file editable. Note you need to install `hud-keep` first.
+Install directly from Github. The `-e` will keep the file editable. Note you need to install `hud-keep` first.
 ```
-pip install -e ~/hud-keep
-pip install -e ~/hud-harvest
+pip install -e git+https://github.com/hud-govt-nz/hud-keep.git@main#egg=hudkeep
+pip install -e git+https://github.com/hud-govt-nz/hud-harvest.git@main#egg=hudharvest
 ```
 OR:
 ```
-pipenv install -e ~/hud-keep
-pipenv install -e ~/hud-harvest
+pipenv install -e git+https://github.com/hud-govt-nz/hud-keep.git@main#egg=hudkeep
+pipenv install -e git+https://github.com/hud-govt-nz/hud-harvest.git@main#egg=hudharvest
 ```
 
 
