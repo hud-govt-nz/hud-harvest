@@ -6,6 +6,9 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 
+# Update Chrome on load, so that parallel runs won't try to install on top of each other
+ChromeDriverManager().install()
+
 # Download using a Selenium browser (i.e. Automated bot browser)
 def selenium_download(src_url, dst_fn, max_wait = 300):
     display = Display(visible=0, size=(800, 600)) # Display into the void, so we can run without a display
