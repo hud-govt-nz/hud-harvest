@@ -159,30 +159,12 @@ class Taskmaster:
             t["children"] = [c for c in t["children"] if c in selected]
         return selected
 
-    # Checks task against last_run
-    def is_changed(self, t):
-        # k = "input_md5s"
-        # lr = t.get("last_run")
-        # if not lr: return True # If there is no record of last run, consider changed
-        # prev = lr[k]
-        # curr = t[k]
-        # if not prev or not curr: return True # If there is no input hash, consider changed
-        # return str(curr) != str(prev)
-        return True
-
     # Checks whether a task is ready to run
     def is_ready(self, t, forced):
         if t["status"] != "unassigned": return False # Already ran/running
         for d in t.get("parents"):
             if d["status"] != "success": return False # Waiting on dependencies
-        if forced or self.is_changed(t):
-            return True
-        else:
-            for c in get_descendents(t) + [t]:
-                c["status"] = "unchanged"
-                c["start"] = c["end"] = datetime.now()
-            self.log_task(t)
-            return False
+        return True
 
 
     #================#
