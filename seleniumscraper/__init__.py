@@ -8,6 +8,8 @@ from selenium.webdriver.chrome.service import Service
 # Start a session to trigger a Chrome update
 # Sometimes we want to do this specifically, so that parallel runs won't try to install on top of each other
 def selenium_update():
+    display = Display(visible=0, size=(800, 600)) # Display into the void, so we can run without a display
+    display.start()
     service = Service()
     options = Options()
     driver = WebDriver(service = service, options = options)
