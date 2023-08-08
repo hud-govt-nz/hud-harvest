@@ -171,12 +171,8 @@ def get_conn_token():
     token_struct = struct.pack(f"<I{len(raw_token)}s", len(raw_token), raw_token)
     return { 1256: token_struct } # Connection option for access tokens, as defined in msodbcsql.h
 
-def pyodbc_conn(database):
-    DB_CONN = os.getenv("DB_CONN")
-    if not DB_CONN: raise Exception("'DB_CONN' not set in '.env'! Read the 'Setting secrets' section in the README.")
-    DB_CONN = re.sub("uid=[^;]+;", "", DB_CONN, flags = re.IGNORECASE)
-    DB_CONN = re.sub("pwd=[^;]+;", "", DB_CONN, flags = re.IGNORECASE)
-    conn = pyodbc.connect(f"{DB_CONN};Database={database};", attrs_before = get_conn_token())
+def pyodbc_conn(database, server = "property.database.windows.net", driver = "{ODBC Driver 18 for SQL Server}"):
+    conn = pyodbc.connect(f"driver={driver};server={server};database={database};", attrs_before = get_conn_token())
     return conn
 
 
@@ -302,20 +298,19 @@ def find_bad_columns(bad_row, src_cols, table_name, schema, conn, max_omit = 3, 
 #   bcp-based   #
 #===============#
 # bcp is very fast, but cannot use Active Directory authentication
-def bcp_loader(local_fn, task, if_exists = "append", delimiter = "|", encoding = "utf-8", strict_mode = True, batch_size = 100000):
+def bcp_loader(local_fn, task, conn_str, if_exists = "append", delimiter = "|", encoding = "utf-8", strict_mode = True, batch_size = 100000):
     task_name = task.task_name
     table_name = task.table_name
     schema = task.schema
     database = task.database
     # Check secrets
-    DB_CONN = os.getenv("DB_CONN")
     try:
-        DB_SERVER = re.search("Server=([^;]*);", DB_CONN, flags = re.IGNORECASE)[1]
-        DB_UID = re.search("uid=([^;]*);", DB_CONN, flags = re.IGNORECASE)[1]
-        DB_PASS = re.search("pwd=([^;]*);", DB_CONN, flags = re.IGNORECASE)[1]
+        server = re.search("Server=([^;]*);", conn_str, flags = re.IGNORECASE)[1]
+        uid = re.search("uid=([^;]*);", conn_str, flags = re.IGNORECASE)[1]
+        pwd = re.search("pwd=([^;]*);", conn_str, flags = re.IGNORECASE)[1]
     except TypeError:
-        print("DB_CONN:", DB_CONN)
-        raise Exception("bcp_loader() requires server, uid and pwd to be set in the 'DB_CONN' string in '.env'! Read the 'Setting secrets' section in the README.")
+        print("conn_str:", conn_str)
+        raise Exception("bcp_loader() requires server, uid and pwd to be set in the 'conn_str' string argument!")
     # Check whether to wipe existing table
     if if_exists == "replace":
         truncate(table_name, schema, database)
@@ -334,10 +329,10 @@ def bcp_loader(local_fn, task, if_exists = "append", delimiter = "|", encoding =
     res = subprocess.run([
         "bcp", f"[{schema}].[{table_name}]",
         "IN", temp_fn,
-        "-S", DB_SERVER,
+        "-S", server,
         "-d", database,
-        "-U", DB_UID,
-        "-P", DB_PASS,
+        "-U", uid,
+        "-P", pwd,
         "-b", str(batch_size),
         "-F", "2",
         "-t", delimiter,
