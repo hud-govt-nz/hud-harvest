@@ -6,12 +6,15 @@ from datetime import datetime
 from zipfile import ZipFile
 from bs4 import BeautifulSoup
 
-def get_link(raw_page, fn_pattern, host = ""):
+def get_link(raw_page, ln_pattern, host = ""):
     soup = BeautifulSoup(raw_page, "html.parser")
-    links = soup.findAll("a", { "href": re.compile(fn_pattern) })
+    links = soup.findAll("a", { "href": re.compile(ln_pattern) })
     links = [a["href"] for a in links]
-    if not links: raise Exception(f"Link to data file not found! Check your fn_pattern ({fn_pattern}).")
-    if len(links) > 1: raise Exception(f"More than one file found! Check your fn_pattern ({fn_pattern}).")
+    if not links:
+        raise Exception(f"Link not found! Check your ln_pattern ({ln_pattern}).")
+    if len(links) > 1:
+        for l in links: print(f"Matching link: '{l}'")
+        raise Exception(f"More than one link found! Check your ln_pattern ({ln_pattern}).")
     return f"{host}{links[0]}"
 
 def download(src_url, dst_fn):
@@ -88,9 +91,9 @@ class StatsNZ:
 # data_url = StatsNZ.get_data_url("rental-price-index-.*-csv.csv", release_url)
 
     # Combines the two steps below
-    def get_latest_data_url(filters, fn_pattern):
+    def get_latest_data_url(filters, ln_pattern):
         release_url = StatsNZ.get_latest_release_url(filters)
-        data_url = StatsNZ.get_data_url(fn_pattern, release_url)
+        data_url = StatsNZ.get_data_url(ln_pattern, release_url)
         return data_url
 
     # Returns the latest information release page for a given filter
@@ -102,19 +105,22 @@ class StatsNZ:
         release_url = f"https://www.stats.govt.nz{latest['PageLink']}"
         return release_url
 
-    # Returns matching data URL from a page
-    def get_data_url(fn_pattern, release_url = "https://www.stats.govt.nz/large-datasets/csv-files-for-download/"):
+    # Returns matching link from a page
+    def get_data_url(ln_pattern, release_url = "https://www.stats.govt.nz/large-datasets/csv-files-for-download/"):
         data = StatsNZ.get_page_data(release_url)
         # Extract documents
         docs = []
         for d in data["PageBlocks"]:
             if d["ClassName"] == "DocumentBlock":
                 docs += d["BlockDocuments"]
-        docs = [d for d in docs if re.match(fn_pattern, d["Name"])]
+        docs = [d for d in docs if re.match(ln_pattern, d["Name"])]
         # Extract link (must be one and only one match)
         links = [d["DocumentLink"] for d in docs]
-        if not links: raise Exception(f"Link to data file not found at {release_url}! Check your fn_pattern ({fn_pattern}).")
-        if len(links) > 1: raise Exception(f"More than one file found at {release_url}! Check your fn_pattern ({fn_pattern}).")
+        if not links:
+            raise Exception(f"Link found at {release_url}! Check your ln_pattern ({ln_pattern}).")
+        if len(links) > 1:
+            for l in links: print(f"Matching link: '{l}'")
+            raise Exception(f"More than one link found at {release_url}! Check your ln_pattern ({ln_pattern}).")
         return f"https://www.stats.govt.nz{links[0]}"
 
     # Extracts the pageViewData from a given page
