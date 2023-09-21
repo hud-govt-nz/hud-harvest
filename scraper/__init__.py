@@ -1,10 +1,12 @@
 # Scraper
 # Tools for getting data
 import json, requests, re, gzip
+import pandas as pd
 from pathlib import Path
 from datetime import datetime
 from zipfile import ZipFile
 from bs4 import BeautifulSoup
+from io import StringIO
 
 def get_link(raw_page, ln_pattern, host = ""):
     soup = BeautifulSoup(raw_page, "html.parser")
@@ -131,3 +133,19 @@ class StatsNZ:
         data_div = soup.find("div", { "id": "pageViewData" })
         data = json.loads(data_div["data-value"])
         return data
+
+    # Scrapes a page for the data used by Highcharts
+    def hichartjack(url, title_pattern):
+        data = StatsNZ.get_page_data(url)
+        graphs = [b for b in data["PageBlocks"] if b["ClassName"] == "GraphTableBlock"]
+        series = [s for g in graphs for s in g["SeriesData"]]
+        targ_series = [s for s in series if re.match(title_pattern, s["Title"])] 
+        if not targ_series:
+            raise Exception(f"Chart not found! Check your title_pattern ({title_pattern}).")
+        if len(targ_series) > 1:
+            for s in targ_series: print(f"Matching title: '{s['Title']}'")
+            raise Exception(f"More than one chart found! Check your title_pattern ({title_pattern}).")
+        else:
+            csv_file = StringIO(targ_series[0]["GraphCsvData"])
+            df = pd.read_csv(csv_file)
+            return df
