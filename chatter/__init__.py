@@ -27,3 +27,7 @@ def send_card(body, entities = [], summary = ""):
         }]
     }
     card.send()
+    # Teams API doesn't raise a bad status code so we have to read the content
+    if card.last_http_response.text[:43] == "Webhook message delivery failed with error:":
+        raise(Exception(card.last_http_response.text))
+
