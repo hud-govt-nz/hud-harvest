@@ -99,13 +99,20 @@ class StatsNZ:
         return data_url
 
     # Returns the latest information release page for a given filter
-    def get_latest_release_url(filters):
-        url = f"https://www.stats.govt.nz/information-releases/?filters={filters}"
+    def get_latest_release_url(filter_text):
+        code = StatsNZ.get_release_code(filter_text)
+        url = f"https://www.stats.govt.nz/information-releases/?dateFiltersID={code}"
         data = StatsNZ.get_page_data(url)
         pages = data["PaginatedBlockPages"]
         latest = sorted(pages, key = lambda d: d["PageDate"])[-1]
         release_url = f"https://www.stats.govt.nz{latest['PageLink']}"
         return release_url
+
+    # Gets the filter code for a type of release
+    def get_release_code(filter_text):
+        data = StatsNZ.get_page_data(f"https://www.stats.govt.nz/information-releases")
+        for f in data["FilterTerms"]["1"]["Children"]:
+            if f["DisplayName"] == filter_text: return f["ID"]
 
     # Returns matching link from a page
     def get_data_url(ln_pattern, release_url = "https://www.stats.govt.nz/large-datasets/csv-files-for-download/"):
