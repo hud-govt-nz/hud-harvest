@@ -179,7 +179,7 @@ def pyodbc_conn(database, server = "property.database.windows.net", driver = "{O
 # Load a CSV into SQL using INSERT + fast_executemany. Has acceptable speeds
 # and very good for debugging, but you should switch to bcp_loader for
 # production where you just want it to go real fast.
-def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", fast_executemany = True, strict_mode = True, geography_crc = 4167, batch_size = 1000):
+def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", fast_executemany = True, strict_mode = True, batch_size = 1000):
     if batch_size > 10000:
         print("\033[1;33mCAUTION! batch_size > 10000 is not recommended!\033[0m")
     task_name = task.task_name
@@ -196,7 +196,7 @@ def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", fast_ex
     with open(local_fn, "r", encoding = encoding) as f:
         reader = csv.reader(f)
         src_cols = next(reader) + ["task_name"]
-        query = make_insert_query(src_cols, table_name, schema, database)
+        query = make_insert_query(src_cols, table_name, schema, database, strict_mode)
         print(f"Loading data into [{schema}].[{table_name}]...")
         conn = pyodbc_conn(database)
         cur = conn.cursor()
