@@ -203,6 +203,7 @@ def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", fast_ex
         if fast_executemany:
             cur.fast_executemany = True
             set_input_sizes(cur, table_name, schema, database)
+            dummy_row = make_dummy_row(table_name, schema, database) # Dummy row required for fast_execute
         row_count = 0
         start = datetime.now()
         while True:
@@ -213,7 +214,10 @@ def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", fast_ex
                 if len(params) >= batch_size: break
             if params:
                 try:
-                    cur.executemany(query, params)
+                    if fast_executemany:
+                        cur.executemany(query, [dummy_row] + params)
+                    else:
+                        cur.executemany(query, params)
                 except KeyboardInterrupt:
                     print("Aborted.")
                     sys.exit()
@@ -228,9 +232,27 @@ def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", fast_ex
                     print(f"{row_count} rows loaded in {datetime.now() - start}s...")
                     start = datetime.now()
             else:
+                purge_dummy_rows(cur, table_name, schema) # Purge dummy rows before committing
                 cur.commit()
                 print(f"{row_count} rows loaded in {datetime.now() - start}s.")
                 return row_count
+
+# pyodbc has a known issue where if the type for the first row is None, then
+# various type-detection stuff kicks in and the fastexecute becomes very very
+# slow (https://github.com/mkleehammer/pyodbc/issues/741). We workaround this
+# by creating a dummy row with non-null values.
+def make_dummy_row(table_name, schema, database):
+    TYPES = {
+        "date": "1970-01-01"
+    }
+    tbl_cols = get_columns(table_name, schema, database)
+    row = [TYPES.get(t) or '0' for t in tbl_cols.values()]
+    row[-1] = "dummy_row" # Mark the row as a dummy row by overwriting task_name
+    return row
+
+# ...and remove the dummy rows before committing
+def purge_dummy_rows(cur, table_name, schema):
+    cur.execute(f"DELETE FROM [{schema}].[{table_name}] WHERE task_name = 'dummy_row'")
 
 # Return the first bad row that's causing a failure in in a executemany operations
 # Will test params in [steps] steps:
