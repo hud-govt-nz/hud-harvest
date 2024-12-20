@@ -1,3 +1,4 @@
+# DEPRECATED
 import shutil, time
 from pathlib import Path
 from pyvirtualdisplay import Display

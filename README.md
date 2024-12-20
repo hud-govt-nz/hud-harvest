@@ -9,13 +9,6 @@ Install prerequisite libraries:
 sudo apt install xvfb libfontconfig1-dev libharfbuzz-dev libfribidi-dev libfreetype6-dev libpng-dev libtiff5-dev libjpeg-dev unixodbc-dev
 ```
 
-Selenium requires Chrome to run. If Chrome is not already installed:
-```
-wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
-sudo dpkg -i google-chrome-stable_current_amd64.deb
-sudo apt install xvfb
-```
-
 Install directly from Github. The `-e` will keep the file editable. Note you need to install `hud-keep` first.
 ```
 pip install -e git+https://github.com/hud-govt-nz/hud-keep.git@main#egg=hudkeep
@@ -25,6 +18,14 @@ OR:
 ```
 pipenv install -e git+https://github.com/hud-govt-nz/hud-keep.git@main#egg=hudkeep
 pipenv install -e git+https://github.com/hud-govt-nz/hud-harvest.git@main#egg=hudharvest
+```
+
+### Playwright
+Playwright is now the preferred method for browser automation.
+```
+pipenv install playwright
+playwright install
+sudo apt-get install libwoff1 libopus0 libenchant-2-2 libsecret-1-0 libhyphen0 libegl1 libevdev2 libgles2 gstreamer1.0-libav
 ```
 
 

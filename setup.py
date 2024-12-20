@@ -7,7 +7,7 @@ setup(
     author="Keith Ng",
     author_email="keith.ng@hud.govt.nz",
     packages=[
-        "scraper", "seleniumscraper",
+        "scraper", "playwrightscraper",
         "sqltools", "mongotools",
         "dbloader", "taskmaster",
         "chatter"
@@ -18,7 +18,7 @@ setup(
         "pandas", "numpy", "bs4",
         "sqlalchemy", "pyodbc", "pymongo", "ijson",
         "requests", "xlrd", "openpyxl", "pyxlsb",
-        "selenium", "webdriver-manager", "pyvirtualdisplay",
+        "playwright", "playwright_stealth",
         "pymsteams"
     ]
 )
