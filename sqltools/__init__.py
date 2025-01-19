@@ -227,12 +227,12 @@ def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", fast_ex
                     bad_row = find_bad_row(query, params, conn)
                     bad_col = find_bad_columns(bad_row, src_cols, table_name, schema, conn)
                     raise
+                purge_dummy_rows(cur, table_name, schema) # Purge dummy rows after each batch to avoid duplicate dummy rows (which breaks primary key constraint)
                 row_count += len(params)
                 if not row_count % 50000:
                     print(f"{row_count} rows loaded in {datetime.now() - start}s...")
                     start = datetime.now()
             else:
-                purge_dummy_rows(cur, table_name, schema) # Purge dummy rows before committing
                 cur.commit()
                 print(f"{row_count} rows loaded in {datetime.now() - start}s.")
                 return row_count
