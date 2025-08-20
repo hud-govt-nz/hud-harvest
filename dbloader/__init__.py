@@ -99,29 +99,35 @@ class DBLoadTask:
                     "store_status": "skipped"
                 })
                 return False
-        ext = re.match(".*\.(\w+)$", local_fn)[1]
-        blob_path = blob_path or self.table_name
-        blob_fn = f"{blob_path}/{self.task_name}.{ext}"
-        res = store(local_fn, blob_fn, container_url, forced)
-        if not res:
-            self.set_log({
-                "source_url": source_url,
-                "store_status": "skipped"
-            })
-            log_msg(f"'{self.task_name}' store has been skipped.", "warning")
-            os.remove(local_fn) # Clean up
+        try:
+            ext = re.match(".*\.(\w+)$", local_fn)[1]
+            blob_path = blob_path or self.table_name
+            blob_fn = f"{blob_path}/{self.task_name}.{ext}"
+            res = store(local_fn, blob_fn, container_url, forced)
+            if not res:
+                self.set_log({
+                    "source_url": source_url,
+                    "store_status": "skipped"
+                })
+                log_msg(f"'{self.task_name}' store has been skipped.", "warning")
+                os.remove(local_fn) # Clean up
+                return False
+            else:
+                self.set_log({
+                    "source_url": source_url,
+                    "file_type": ext,
+                    "hash": l_md5,
+                    "size": l_size,
+                    "store_status": "success",
+                    "stored_at": datetime.now()
+                })
+                log_msg(f"'{self.task_name}' stored.", "success")
+                return True
+        except Exception as msg:
+            self.set_log({ "store_status": "error" })
+            self.store_error = msg
+            print(f"\033[1;31m{msg}\033[0m")
             return False
-        else:
-            self.set_log({
-                "source_url": source_url,
-                "file_type": ext,
-                "hash": l_md5,
-                "size": l_size,
-                "store_status": "success",
-                "stored_at": datetime.now()
-            })
-            log_msg(f"'{self.task_name}' stored.", "success")
-            return True
 
     def load(self, container_url, loader, blob_path = None, forced = False, **kwargs):
         """
@@ -178,16 +184,22 @@ class DBLoadTask:
         blob_fn = f"{blob_path}/{fn}"
         local_fn = f"temp/{fn}"
         retrieve(local_fn, blob_fn, container_url)
-        start = datetime.now()
-        row_count = loader(local_fn, self, **kwargs)
-        log_msg(f"'{self.task_name}' loaded ({row_count} rows) in {datetime.now() - start}s.", "success")
-        os.remove(local_fn) # Clean up
-        self.set_log({
-            "row_count": row_count,
-            "load_status": "success",
-            "loaded_at": datetime.now()
-        })
-        return True
+        try:
+            start = datetime.now()
+            row_count = loader(local_fn, self, **kwargs)
+            log_msg(f"'{self.task_name}' loaded ({row_count} rows) in {datetime.now() - start}s.", "success")
+            os.remove(local_fn) # Clean up
+            self.set_log({
+                "row_count": row_count,
+                "load_status": "success",
+                "loaded_at": datetime.now()
+            })
+            return True
+        except Exception as msg:
+            self.set_log({ "load_status": "error" })
+            self.load_error = msg
+            print(f"\033[1;31m{msg}\033[0m")
+            return False
 
     # # Unload a task from a database (TODO: This is SQL only, needs to be rewritten to be database agnostic)
     # def unload(self):
