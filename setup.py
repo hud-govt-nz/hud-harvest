@@ -10,7 +10,7 @@ setup(
         "scraper", "playwrightscraper",
         "sqltools", "mongotools",
         "dbloader", "taskmaster",
-        "chatter"
+        "msteams"
     ],
     include_package_data=True,
     install_requires=[
@@ -18,7 +18,6 @@ setup(
         "pandas", "numpy", "bs4",
         "sqlalchemy", "pyodbc", "pymongo", "ijson",
         "requests", "xlrd", "openpyxl", "pyxlsb",
-        "playwright", "playwright_stealth",
-        "pymsteams"
+        "playwright", "playwright_stealth"
     ]
 )

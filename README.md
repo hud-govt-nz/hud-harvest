@@ -38,7 +38,7 @@ CONTAINER_URL="https://dlprojectsdataprod.blob.core.windows.net/projects"
 TEAMS_WEBHOOK="https://mhud.webhook.office.com/webhookb2/NOT-THE-REAL-WEBHOOK"
 ```
 
-* `TEAMS_WEBHOOK`: The [incoming Teams webhook](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook), this allows the `chatter` module to send Teams messages.
+* `TEAMS_WEBHOOK`: The [incoming Teams webhook](https://support.microsoft.com/en-us/office/create-incoming-webhooks-with-workflows-for-microsoft-teams-8ae491c7-0394-4861-ba59-055e33f75498), this allows the `msteams` module to send Teams messages.
 * `CONTAINER_URL`: Location of the Azure storage container where `hud-keep` will store blobs.
 
 ### Running

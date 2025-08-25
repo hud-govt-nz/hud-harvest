@@ -4,7 +4,7 @@ import re, json, asyncio, hashlib
 import pandas as pd
 from datetime import datetime
 from sqltools import insert, update, delete
-from chatter import send_card
+from msteams import send_card
 
 STATUSES = {
     "unassigned": "\033[0;35m",
