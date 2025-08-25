@@ -8,15 +8,14 @@ setup(
     author_email="keith.ng@hud.govt.nz",
     packages=[
         "scraper", "playwrightscraper",
-        "sqltools", "mongotools",
-        "dbloader", "taskmaster",
+        "sqltools", "dbloader", "taskmaster",
         "msteams"
     ],
     include_package_data=True,
     install_requires=[
         "hudkeep",
         "pandas", "numpy", "bs4",
-        "sqlalchemy", "pyodbc", "pymongo", "ijson",
+        "sqlalchemy", "pyodbc",
         "requests", "xlrd", "openpyxl", "pyxlsb",
         "playwright", "playwright_stealth"
     ]
