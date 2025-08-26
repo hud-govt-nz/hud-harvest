@@ -209,7 +209,7 @@ class DBLoadTask:
     #     self.set_log({ "loaded_at": None })
 
 
-    def send_report(self, entities = []):
+    def send_report(self, ping = []):
         """
         Sends a report of the current task to the bot-health Teams channel.
 
@@ -217,16 +217,11 @@ class DBLoadTask:
 
         Parameters
         ----------
-        entities : list
+        ping : list
             A list of entities to be pinged. e.g.:
-            [{
-                "type": "mention",
-                "text": "<at>Keith Ng</at>",
-                "mentioned": {
-                    "id": "keith.ng@hud.govt.nz",
-                    "name": "Keith Ng"
-                }
-            }]
+            [
+                {"id": "keith.ng@hud.govt.nz", "name": "Keith Ng"}
+            ]
         """
         # Determine overall status
         if self.log["load_status"] == "success":
@@ -251,9 +246,10 @@ class DBLoadTask:
         }]
         facts = [{ "title": k, "value": str(v) } for k,v in self.log.items()]
         # Make body and send
-        body = make_base_card(self.log["task_name"], status)
-        body[0]["items"].append({ "type": "FactSet", "facts": facts })
-        send_card(body, entities)
+        body = make_base_card(
+            self.log["task_name"], status,
+            [{ "type": "FactSet", "facts": facts }])
+        send_card(body, ping)
 
 
     #=========#
@@ -364,7 +360,7 @@ def get_pending(table_name, schema, database, container_url):
     return [c[0] for c in cur.fetchall()]
 
 # Create a summary report for a list of tasks (doesn't send, only creates the card body)
-def send_summary_report(run_name, tasks, entities = []):
+def send_summary_report(run_name, tasks, ping = []):
     # Determine overall status
     if not tasks:
         status = "no tasks"
@@ -384,9 +380,7 @@ def send_summary_report(run_name, tasks, entities = []):
             v = b.log["load_status"]
         facts.append({ "title": t, "value": v })
     # Make body and send
-    body = make_base_card(run_name, status)
-    body[0]["items"].append({
-        "type":"FactSet",
-        "facts": facts
-    })
-    send_card(body, entities)
+    body = make_base_card(
+        run_name, status,
+        [{ "type": "FactSet", "facts": facts }])
+    send_card(body, ping)

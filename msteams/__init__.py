@@ -5,13 +5,22 @@ import requests
 TEAMS_WEBHOOK = os.getenv("TEAMS_WEBHOOK")
 
 # Underlying function for sending cards
-def send_card(body, entities = [], summary = ""):
-    if entities:
+def send_card(body, ping = [], summary = ""):
+    # Deal with pings
+    entities = []
+    for e in ping:
+        entities.append({
+            "type": "mention",
+            "text": f"<at>{e['name']}</at>",
+            "mentioned": e
+        })
+    if ping:
         body.append({
             "type": "TextBlock",
             "text": f"Ping {', '.join([e['text'] for e in entities])}"
         })
-    res = requests.post(TEAMS_WEBHOOK, json = {
+    # Create payload
+    payload = {
         "type": "message",
         "summary": summary,
         "attachments": [{
@@ -22,28 +31,27 @@ def send_card(body, entities = [], summary = ""):
                 "msteams": { "width": "Full", "entities": entities }
             }
         }]
-    })
+    }
+    # Send
+    res = requests.post(TEAMS_WEBHOOK, json = payload)
     try:
         res.raise_for_status()
+        return res
     except:
         print(f"\033[1;31m{res.text}\033[0m")
         raise
-    return res
 
 # Send a simple message
-def send_msg(msg, entities = [], summary = []):
-    send_card([{ "type": "TextBlock", "text": msg }], entities, summary)
+def send_msg(msg, ping = [], summary = []):
+    send_card([{ "type": "TextBlock", "text": msg }], ping, summary)
 
-def make_base_card(task_name, status):
+# Creates message and card wrappers around the content of a card
+def make_base_card(task_name, status, items = []):
     # Determine overall status
-    if status == "success":
-        status = "success"
-        color = "good" # good/warning/attention
-    else:
-        status = status or "error"
-        color = "attention" # good/warning/attention
+    status = status or "error"
+    color = "good" if status == "success" else "attention"
     # Create card
-    return [{
+    payload = [{
         "type": "Container",
         "style": color,
         "bleed": True,
@@ -61,3 +69,6 @@ def make_base_card(task_name, status):
             "text": status.upper()
         }]
     }]
+    # Add items
+    payload[0]["items"] += items
+    return payload
