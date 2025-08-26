@@ -1,11 +1,9 @@
 # Tasker
 # Task management, database loading and logging layer on top of keeper
-import os, sys
+import os
 import re
-import pandas as pd
-import numpy as np
 from datetime import datetime
-from hudkeep import store, retrieve, local_props, blob_props
+from hudkeep import store, retrieve, local_props
 from sqltools import run_query, pyodbc_conn
 from taskmaster import dump_result
 from msteams import make_base_card, send_card
