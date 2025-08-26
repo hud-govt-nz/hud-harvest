@@ -228,13 +228,29 @@ class DBLoadTask:
                 }
             }]
         """
+        # Determine overall status
         if self.log["load_status"] == "success":
             status = "success"
         elif self.log["load_status"] is None:
             status = "incomplete"
         else:
             status = self.log["load_status"]
-        facts = [{ "title": k, "value": v } for k,v in self.log.items()]
+        # Generate factset from log
+        facts = [{ 
+            "Target table": self.log["table_name"],
+            "Source URL": self.log["source_url"],
+            "File type": self.log["file_type"],
+            "Size": self.log["size"],
+            "Row count": self.log["row_count"],
+            "Data start": self.log["data_start"],
+            "Data end": self.log["data_end"],
+            "Store status": self.log["store_status"],
+            "Load status": self.log["load_status"],
+            "Stored at": self.log["stored_at"],
+            "Loaded at": self.log["loaded_at"]
+        }]
+        facts = [{ "title": k, "value": str(v) } for k,v in self.log.items()]
+        # Make body and send
         body = make_base_card(self.log["task_name"], status)
         body[0]["items"].append({ "type": "FactSet", "facts": facts })
         send_card(body, entities)
@@ -307,6 +323,7 @@ class DBLoadTask:
                 log[k] = str(log[k])
         dump_result(log)
 
+
 def parse_log(row):
     if not row: return None
     return {
@@ -337,51 +354,6 @@ def log_msg(message, status_type):
         colour = "\033[1;31m"
     print(f"{colour}{message}\033[0m")
 
-# Generate a DBLoader task card for sending via Teams
-def dbload_card(t, facts = None):
-    STATUS_COLOUR = {
-        "success": "good",
-        "skipped": "light",
-        "failed": "attention"
-    }
-    facts = facts or {
-        "Target table": t["table_name"],
-        "Source URL": t["source_url"],
-        "File type": t["file_type"],
-        "Size": t["size"],
-        "Row count": t["row_count"],
-        "Data start": t["data_start"],
-        "Data end": t["data_end"],
-        "Store status": t["store_status"],
-        "Load status": t["load_status"],
-        "Stored at": t["stored_at"],
-        "Loaded at": t["loaded_at"]
-    }
-    return {
-        "type": "Container",
-        "bleed": True,
-        "items": [{
-            "type": "TextBlock",
-            "size": "small",
-            "weight": "bolder",
-            "text": t["task_name"]
-        }, {
-            "type": "TextBlock",
-            "size": "large",
-            "weight": "bolder",
-            "spacing": "none",
-            "color": STATUS_COLOUR[t["status"]],
-            "text": t["status"].upper()
-        }, {
-            "type": "FactSet",
-            "facts": [{"title": k, "value": v} for k,v in facts.items()]
-        }]
-    }
-
-
-#=======================#
-#   Table-level tools   #
-#=======================#
 # Find everything that hasn't been loaded
 def get_pending(table_name, schema, database, container_url):
     cur = run_query(
@@ -391,10 +363,6 @@ def get_pending(table_name, schema, database, container_url):
         database, mode = "read")
     return [c[0] for c in cur.fetchall()]
 
-
-#======================#
-#   Multi-task tools   #
-#======================#
 # Create a summary report for a list of tasks (doesn't send, only creates the card body)
 def send_summary_report(run_name, tasks, entities = []):
     # Determine overall status
@@ -402,7 +370,6 @@ def send_summary_report(run_name, tasks, entities = []):
         status = "success"
     else:
         status = "ERROR"
-
     # Generate factset from tasks
     facts = []
     for b in tasks:
@@ -414,7 +381,6 @@ def send_summary_report(run_name, tasks, entities = []):
         else:
             v = b.log["load_status"]
         facts.append({ "title": t, "value": v })
-
     # Make body and send
     body = make_base_card(run_name, status)
     body[0]["items"].append({

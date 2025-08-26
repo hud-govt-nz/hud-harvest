@@ -42,7 +42,6 @@ def make_base_card(task_name, status):
     else:
         status = status or "error"
         color = "attention" # good/warning/attention
-
     # Create card
     return [{
         "type": "Container",
@@ -59,6 +58,6 @@ def make_base_card(task_name, status):
             "weight": "bolder",
             "spacing": "none",
             "color": color,
-            "text": status
+            "text": status.upper()
         }]
     }]
