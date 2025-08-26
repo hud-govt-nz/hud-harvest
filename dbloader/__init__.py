@@ -8,6 +8,7 @@ from datetime import datetime
 from hudkeep import store, retrieve, local_props, blob_props
 from sqltools import run_query, pyodbc_conn
 from taskmaster import dump_result
+from msteams import make_base_card, send_card
 
 class DBLoadTask:
     def __init__(self, task_name, table_name, schema, database = "property", log_table_name = "dbtask_logs"):
@@ -210,6 +211,37 @@ class DBLoadTask:
     #     self.set_log({ "loaded_at": None })
 
 
+    def send_report(self, entities = []):
+        """
+        Sends a report of the current task to the bot-health Teams channel.
+
+        Can optionally ping people.
+
+        Parameters
+        ----------
+        entities : list
+            A list of entities to be pinged. e.g.:
+            [{
+                "type": "mention",
+                "text": "<at>Keith Ng</at>",
+                "mentioned": {
+                    "id": "keith.ng@hud.govt.nz",
+                    "name": "Keith Ng"
+                }
+            }]
+        """
+        if self.log["load_status"] == "success":
+            status = "success"
+        elif self.log["load_status"] is None:
+            status = "incomplete"
+        else:
+            status = self.log["load_status"]
+        facts = [{ "title": k, "value": v } for k,v in self.log.items()]
+        body = make_base_card(self.log["task_name"], status)
+        body[0]["items"].append({ "type": "FactSet", "facts": facts })
+        send_card(body, entities)
+
+
     #=========#
     #   Log   #
     #=========#
@@ -360,3 +392,35 @@ def get_pending(table_name, schema, database, container_url):
         "ORDER BY task_name",
         database, mode = "read")
     return [c[0] for c in cur.fetchall()]
+
+
+#======================#
+#   Multi-task tools   #
+#======================#
+# Create a summary report for a list of tasks (doesn't send, only creates the card body)
+def send_summary_report(run_name, tasks, entities = []):
+    # Determine overall status
+    if all(b.log["load_status"] == "success" for b in tasks):
+        status = "success"
+    else:
+        status = "ERROR"
+
+    # Generate factset from tasks
+    facts = []
+    for b in tasks:
+        t = b.log["task_name"]
+        if b.log["load_status"] == "success":
+            v = f"{b.log['row_count']} rows loaded"
+        elif b.log["load_status"] == "error":
+            v = str(b.load_error)
+        else:
+            v = b.log["load_status"]
+        facts.append({ "title": t, "value": v })
+
+    # Make body and send
+    body = make_base_card(run_name, status)
+    body[0]["items"].append({
+        "type":"FactSet",
+        "facts": facts
+    })
+    send_card(body, entities)

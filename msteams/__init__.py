@@ -34,18 +34,14 @@ def send_card(body, entities = [], summary = ""):
 def send_msg(msg, entities = [], summary = []):
     send_card([{ "type": "TextBlock", "text": msg }], entities, summary)
 
-# Create a summary card for a single task (doesn't send, only creates the card body)
-def task_summary_card(b):
+def make_base_card(task_name, status):
     # Determine overall status
-    if b.log["load_status"] == "success":
+    if status == "success":
         status = "success"
         color = "good" # good/warning/attention
     else:
-        status = "ERROR"
+        status = status or "error"
         color = "attention" # good/warning/attention
-
-    # Generate factset from tasks
-    facts = [{ "title": k, "value": v } for k,v in b.log.items()]
 
     # Create card
     return [{
@@ -56,7 +52,7 @@ def task_summary_card(b):
             "type": "TextBlock",
             "size": "small",
             "weight": "bolder",
-            "text": b.log["task_name"]
+            "text": task_name
         }, {
             "type": "TextBlock",
             "size": "large",
@@ -64,53 +60,5 @@ def task_summary_card(b):
             "spacing": "none",
             "color": color,
             "text": status
-        }, {
-            "type":"FactSet",
-            "facts": facts
-        }]
-    }]
-
-# Create a summary card for a list of tasks (doesn't send, only creates the card body)
-def tasks_summary_card(run_name, tasks):
-    # Determine overall status
-    if all(b.log["load_status"] == "success" for b in tasks):
-        status = "success"
-        color = "good" # good/warning/attention
-    else:
-        status = "ERROR"
-        color = "attention" # good/warning/attention
-
-    # Generate factset from tasks
-    facts = []
-    for b in tasks:
-        t = b.log["task_name"]
-        if b.log["load_status"] == "success":
-            v = f"{b.log['row_count']} rows loaded"
-        elif b.log["load_status"] == "error":
-            v = str(b.load_error)
-        else:
-            v = b.log["load_status"]
-        facts.append({ "title": t, "value": v })
-
-    # Create card
-    return [{
-        "type": "Container",
-        "style": color,
-        "bleed": True,
-        "items": [{
-            "type": "TextBlock",
-            "size": "small",
-            "weight": "bolder",
-            "text": run_name
-        }, {
-            "type": "TextBlock",
-            "size": "large",
-            "weight": "bolder",
-            "spacing": "none",
-            "color": color,
-            "text": status
-        }, {
-            "type":"FactSet",
-            "facts": facts
         }]
     }]
