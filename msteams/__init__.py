@@ -34,6 +34,42 @@ def send_card(body, entities = [], summary = ""):
 def send_msg(msg, entities = [], summary = []):
     send_card([{ "type": "TextBlock", "text": msg }], entities, summary)
 
+# Create a summary card for a single task (doesn't send, only creates the card body)
+def task_summary_card(b):
+    # Determine overall status
+    if b.log["load_status"] == "success":
+        status = "success"
+        color = "good" # good/warning/attention
+    else:
+        status = "ERROR"
+        color = "attention" # good/warning/attention
+
+    # Generate factset from tasks
+    facts = [{ "title": k, "value": v } for k,v in b.log.items()]
+
+    # Create card
+    return [{
+        "type": "Container",
+        "style": color,
+        "bleed": True,
+        "items": [{
+            "type": "TextBlock",
+            "size": "small",
+            "weight": "bolder",
+            "text": b.log["task_name"]
+        }, {
+            "type": "TextBlock",
+            "size": "large",
+            "weight": "bolder",
+            "spacing": "none",
+            "color": color,
+            "text": status
+        }, {
+            "type":"FactSet",
+            "facts": facts
+        }]
+    }]
+
 # Create a summary card for a list of tasks (doesn't send, only creates the card body)
 def tasks_summary_card(run_name, tasks):
     # Determine overall status
