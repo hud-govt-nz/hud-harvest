@@ -59,7 +59,7 @@ def tasks_summary_card(run_name, tasks):
     # Create card
     return [{
         "type": "Container",
-        "style": "accent",
+        "style": color,
         "bleed": True,
         "items": [{
             "type": "TextBlock",
