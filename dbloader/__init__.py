@@ -366,10 +366,12 @@ def get_pending(table_name, schema, database, container_url):
 # Create a summary report for a list of tasks (doesn't send, only creates the card body)
 def send_summary_report(run_name, tasks, entities = []):
     # Determine overall status
+    if not tasks:
+        status = "no tasks"
     if all(b.log["load_status"] == "success" for b in tasks):
         status = "success"
     else:
-        status = "ERROR"
+        status = "error"
     # Generate factset from tasks
     facts = []
     for b in tasks:
