@@ -203,7 +203,7 @@ def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", fast_ex
         if fast_executemany:
             cur.fast_executemany = True
             set_input_sizes(cur, table_name, schema, database)
-            dummy_row = make_dummy_row(table_name, schema, database) # Dummy row required for fast_execute
+            dummy_row = make_dummy_row(src_cols, table_name, schema, database) # Dummy row required for fast_execute
         row_count = 0
         start = datetime.now()
         while True:
@@ -241,12 +241,12 @@ def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", fast_ex
 # various type-detection stuff kicks in and the fastexecute becomes very very
 # slow (https://github.com/mkleehammer/pyodbc/issues/741). We workaround this
 # by creating a dummy row with non-null values.
-def make_dummy_row(table_name, schema, database):
+def make_dummy_row(src_cols, table_name, schema, database):
     TYPES = {
         "date": "1970-01-01"
     }
-    tbl_cols = get_columns(table_name, schema, database)
-    row = [TYPES.get(t) or '0' for t in tbl_cols.values()]
+    tbl_cols = get_columns(table_name, schema, database) # Determine data types of columns in table...
+    row = [TYPES.get(tbl_cols[t]) or '0' for t in src_cols] # ...but dummy row has to follow the order of the new data, NOT the table
     row[-1] = "dummy_row" # Mark the row as a dummy row by overwriting task_name
     return row
 
