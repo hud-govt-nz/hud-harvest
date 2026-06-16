@@ -24,14 +24,13 @@ def download(src_url, dst_fn):
     res = requests.get(src_url, stream=True)
     dst = Path(dst_fn)
     if res.headers.get("Transfer-Encoding") == "chunked":
-        print(f"...as a chunked transfer...")
         if dst.exists():
             print("CAUTION: Can't match sized on a chunked transfer, overwriting...")
     elif res.headers.get("Content-Encoding") in ["gzip"]:
-        print("CAUTION: Can't match sized on a compressed transfer, overwriting...")
+        if dst.exists():
+            print("CAUTION: Can't match sized on a compressed transfer, overwriting...")
     elif res.headers.get("Content-Length"):
         src_size = int(res.headers["Content-Length"])
-        print(f"...file is {src_size} bytes...")
         if dst.exists():
             dst_size = dst.stat().st_size
             if dst_size == 0:
