@@ -20,11 +20,19 @@ def run_query(query, database, mode, verbose = False):
     start = datetime.now()
     conn = pyodbc_conn(database)
     cur = conn.cursor()
-    cur.execute(query)
-    if mode == "read": pass
-    elif mode == "write": cur.commit()
-    elif mode == "test": cur.rollback()
-    else: raise Exception("Mode must be 'read', 'write', or 'test'!")
+    try:
+        cur.execute(query)
+        if mode == "read": pass
+        elif mode == "write":
+            while cur.nextset(): pass # Iterate through results to surface any errors (required for stored procedures)
+            cur.commit()
+        elif mode == "test": cur.rollback()
+        else: raise Exception("Mode must be 'read', 'write', or 'test'!")
+    except:
+        cur.rollback() # Always rollback on error
+        cur.close()
+        conn.close()
+        raise
     if verbose: print(f"Query completed in {datetime.now() - start}s.")
     return cur
 
