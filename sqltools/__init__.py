@@ -91,6 +91,17 @@ def truncate(table_name, schema, database, commit = True):
         cur.execute(f"TRUNCATE TABLE [{schema}].[{table_name}]")
         if commit: cur.commit()
 
+def get_primary_keys(table_name, schema, database):
+    conn = pyodbc_conn(database)
+    cur = conn.cursor()
+    cur.execute(
+        f"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+        f"WHERE OBJECTPROPERTY(OBJECT_ID(CONSTRAINT_SCHEMA + '.' + QUOTENAME(CONSTRAINT_NAME)), 'IsPrimaryKey') = 1 "
+        f"AND TABLE_NAME = '{table_name}' AND TABLE_SCHEMA = '{schema}'")
+    res = [r[0] for r in cur.fetchall()]
+    cur.close()
+    return res
+
 # Generate insert query for bulk inserts
 def make_insert_query(src_cols, table_name, schema, database, strict_mode = True):
     tbl_cols = get_columns(table_name, schema, database).keys()
