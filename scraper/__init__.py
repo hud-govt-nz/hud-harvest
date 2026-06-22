@@ -3,6 +3,7 @@
 import json, requests, re, gzip
 import pandas as pd
 from pathlib import Path
+from time import sleep
 from datetime import datetime
 from zipfile import ZipFile
 from bs4 import BeautifulSoup
@@ -19,7 +20,7 @@ def get_link(raw_page, ln_pattern, host = ""):
         raise Exception(f"More than one link found! Check your ln_pattern ({ln_pattern}).")
     return f"{host}{links[0]}"
 
-def download(src_url, dst_fn):
+def download(src_url, dst_fn, retries = 1, retry_wait = 60):
     print(f"Downloading {src_url}...")
     res = requests.get(src_url, stream=True)
     dst = Path(dst_fn)
@@ -48,8 +49,17 @@ def download(src_url, dst_fn):
     else:
         raise Exception("No 'Content-Length' in header and not chunked transfer. What kind of transfer is this??")
     with open(dst_fn, "wb") as f:
-        res = requests.get(src_url)
-        res.raise_for_status()
+        for i in range(0, retries):
+            try:
+                res = requests.get(src_url)
+                res.raise_for_status()
+                break # Success
+            except requests.exceptions.HTTPError:
+                if i + 1 < retries:
+                    print(f"Download failed, retrying in {retry_wait}s...")
+                    sleep(retry_wait)
+                else:
+                    raise
         f.write(res.content)
 
 # Extract a specific file based on targ_pattern from src_fn, and save it as dst_fn
