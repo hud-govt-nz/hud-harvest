@@ -56,9 +56,10 @@ def download(src_url, dst_fn, retries = 1, retry_wait = 60):
                 break # Success
             except requests.exceptions.HTTPError:
                 if i + 1 < retries:
-                    print(f"Download failed, retrying in {retry_wait}s...")
+                    print(f"Download failed (status code: {res.status_code}), retrying in {retry_wait}s...")
                     sleep(retry_wait)
                 else:
+                    print(f"Failed after {i + 1} retries!")
                     raise
         f.write(res.content)
 
