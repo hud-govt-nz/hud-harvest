@@ -20,7 +20,7 @@ def get_link(raw_page, ln_pattern, host = ""):
         raise Exception(f"More than one link found! Check your ln_pattern ({ln_pattern}).")
     return f"{host}{links[0]}"
 
-def download(src_url, dst_fn, retries = 1, retry_wait = 60):
+def download(src_url, dst_fn, retries = 1, retry_wait = 60, **kwargs):
     print(f"Downloading {src_url}...")
     res = requests.get(src_url, stream=True)
     dst = Path(dst_fn)
@@ -51,12 +51,19 @@ def download(src_url, dst_fn, retries = 1, retry_wait = 60):
     with open(dst_fn, "wb") as f:
         for i in range(0, retries):
             try:
-                res = requests.get(src_url)
+                res = requests.get(src_url, **kwargs)
                 res.raise_for_status()
                 break # Success
             except requests.exceptions.HTTPError:
                 if i + 1 < retries:
                     print(f"Download failed (status code: {res.status_code}), retrying in {retry_wait}s...")
+                    sleep(retry_wait)
+                else:
+                    print(f"Failed after {i + 1} retries!")
+                    raise
+            except requests.exceptions.ReadTimeout:
+                if i + 1 < retries:
+                    print(f"Download failed (timeout, retrying in {retry_wait}s...")
                     sleep(retry_wait)
                 else:
                     print(f"Failed after {i + 1} retries!")
