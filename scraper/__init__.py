@@ -67,6 +67,8 @@ def download(src_url, dst_fn, retries = 1, retry_wait = 60, debug = False, **kwa
             print(f"\033[1;33mDownload failed (status code: {res.status_code}), retrying in {retry_wait}s...\033[0m")
         except requests.exceptions.ReadTimeout:
             print(f"\033[1;33mDownload failed (timeout, retrying in {retry_wait}s...\033[0m")
+        except requests.exceptions.ChunkedEncodingError:
+            print(f"\033[1;33mDownload failed (chunk encoding error, retrying in {retry_wait}s...\033[0m")
         finally:
             if debug: print(f"Duration: {datetime.now() - start_time}")
         sleep(retry_wait)
