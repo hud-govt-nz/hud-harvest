@@ -1,6 +1,6 @@
 # Scraper
 # Tools for getting data
-import json, requests, re, gzip
+import json, requests, re, gzip, sys
 import pandas as pd
 from pathlib import Path
 from time import sleep
@@ -20,55 +20,58 @@ def get_link(raw_page, ln_pattern, host = ""):
         raise Exception(f"More than one link found! Check your ln_pattern ({ln_pattern}).")
     return f"{host}{links[0]}"
 
-def download(src_url, dst_fn, retries = 1, retry_wait = 60, **kwargs):
+def download(src_url, dst_fn, retries = 1, retry_wait = 60, debug = False, **kwargs):
     print(f"Downloading {src_url}...")
+    # Check download target against local file
     res = requests.get(src_url, stream=True)
     dst = Path(dst_fn)
-    if res.headers.get("Transfer-Encoding") == "chunked":
-        if dst.exists():
-            print("CAUTION: Can't match sized on a chunked transfer, overwriting...")
+    if not dst.exists():
+        pass
+    elif res.headers.get("Transfer-Encoding") == "chunked":
+        print("\033[0;33mCAUTION: Can't match size on a chunked transfer, overwriting...\033[0m")
     elif res.headers.get("Content-Encoding") in ["gzip"]:
-        if dst.exists():
-            print("CAUTION: Can't match sized on a compressed transfer, overwriting...")
+        print("\033[0;33mCAUTION: Can't match size on a compressed transfer, overwriting...\033[0m")
     elif res.headers.get("Content-Length"):
         src_size = int(res.headers["Content-Length"])
-        if dst.exists():
-            dst_size = dst.stat().st_size
-            if dst_size == 0:
-                pass # Ignore empty files
-            elif src_size == dst_size:
-                print("Local file of the same size already exists, ignoring.")
-                return
-            elif "Last-Modified" in res.headers:
-                src_date = datetime.strptime(res.headers["Last-Modified"], "%a, %d %b %Y %H:%M:%S %Z")
-                dst_date = datetime.fromtimestamp(dst.stat().st_mtime)
-                print(f"Local file exists ({dst_size} bytes, last modified {dst_date}), "
-                      f"but does not match remote file ({src_size} bytes, last modified {src_date})! "
-                      f"Delete local file if you want to continue.")
-                raise Exception("Mismatched local file!")
+        dst_size = dst.stat().st_size
+        if dst_size == 0:
+            pass # Ignore empty files
+        elif src_size == dst_size:
+            print("\033[1;32mLocal file of the same size already exists, ignoring.\033[0m")
+            return
+        elif "Last-Modified" in res.headers:
+            src_date = datetime.strptime(res.headers["Last-Modified"], "%a, %d %b %Y %H:%M:%S %Z")
+            dst_date = datetime.fromtimestamp(dst.stat().st_mtime)
+            print(
+                f"\033[1;31mLocal file exists ({dst_size} bytes, last modified {dst_date}), "
+                f"but does not match remote file ({src_size} bytes, last modified {src_date})! "
+                f"Delete local file if you want to continue.\033[0m")
+            raise Exception("Mismatched local file!")
     else:
-        raise Exception("No 'Content-Length' in header and not chunked transfer. What kind of transfer is this??")
-    with open(dst_fn, "wb") as f:
-        for i in range(0, retries):
-            try:
-                res = requests.get(src_url, **kwargs)
-                res.raise_for_status()
-                break # Success
-            except requests.exceptions.HTTPError:
-                if i + 1 < retries:
-                    print(f"Download failed (status code: {res.status_code}), retrying in {retry_wait}s...")
-                    sleep(retry_wait)
-                else:
-                    print(f"Failed after {i + 1} retries!")
-                    raise
-            except requests.exceptions.ReadTimeout:
-                if i + 1 < retries:
-                    print(f"Download failed (timeout, retrying in {retry_wait}s...")
-                    sleep(retry_wait)
-                else:
-                    print(f"Failed after {i + 1} retries!")
-                    raise
-        f.write(res.content)
+        raise Exception("Unknown transfer type (no 'Content-Length' in header and not chunked transfer)!")
+    # Download with retries
+    for i in range(1, retries + 1):
+        start_time = datetime.now()
+        if debug: print(f"Start: {start_time}")
+        try:
+            res = requests.get(src_url, **kwargs)
+            res.raise_for_status()
+            with open(dst_fn, "wb") as f:
+                f.write(res.content)
+            if debug: print(f"\033[1;32mSuccess.\033[0m")
+            return # Success no more retry
+        except KeyboardInterrupt:
+            print(f"\033[1;33mAborted.\033[0m")
+            sys.exit()
+        except requests.exceptions.HTTPError:
+            print(f"\033[1;33mDownload failed (status code: {res.status_code}), retrying in {retry_wait}s...\033[0m")
+        except requests.exceptions.ReadTimeout:
+            print(f"\033[1;33mDownload failed (timeout, retrying in {retry_wait}s...\033[0m")
+        finally:
+            if debug: print(f"Duration: {datetime.now() - start_time}")
+        sleep(retry_wait)
+    else:
+        print(f"\033[1;31mFailed after {i} retries!\033[0m")
 
 # Extract a specific file based on targ_pattern from src_fn, and save it as dst_fn
 def unzip(src_fn, fn_pattern, dst_fn):
