@@ -59,21 +59,23 @@ def download(src_url, dst_fn, retries = 1, retry_wait = 60, debug = False, **kwa
             with open(dst_fn, "wb") as f:
                 f.write(res.content)
             if debug: print(f"\033[1;32mSuccess.\033[0m")
-            return # Success no more retry
+            return(dst_fn) # Success no more retry
         except KeyboardInterrupt:
             print(f"\033[1;33mAborted.\033[0m")
             sys.exit()
         except requests.exceptions.HTTPError:
-            print(f"\033[1;33mDownload failed (status code: {res.status_code}), retrying in {retry_wait}s...\033[0m")
+            print(f"\033[1;33mDownload failed (status code: {res.status_code}).\033[0m")
         except requests.exceptions.ReadTimeout:
-            print(f"\033[1;33mDownload failed (timeout, retrying in {retry_wait}s...\033[0m")
+            print(f"\033[1;33mDownload failed (timeout).\033[0m")
         except requests.exceptions.ChunkedEncodingError:
-            print(f"\033[1;33mDownload failed (chunk encoding error, retrying in {retry_wait}s...\033[0m")
+            print(f"\033[1;33mDownload failed (chunk encoding error).\033[0m")
         finally:
             if debug: print(f"Duration: {datetime.now() - start_time}")
-        sleep(retry_wait)
-    else:
-        print(f"\033[1;31mFailed after {i} retries!\033[0m")
+        if i > retries:
+            print(f"Retrying in {retry_wait}s...")
+            sleep(retry_wait)
+        elif retries > 1:
+            print(f"\033[1;31mFailed after {i} retries!\033[0m")
 
 # Extract a specific file based on targ_pattern from src_fn, and save it as dst_fn
 def unzip(src_fn, fn_pattern, dst_fn):
