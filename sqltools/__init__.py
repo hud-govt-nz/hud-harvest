@@ -248,8 +248,11 @@ def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", fast_ex
                 except:
                     print("\033[1;31mLoad failed. Aborting and trying to find the problem...\033[0m")
                     cur.rollback()
-                    bad_row = find_bad_row(query, params, conn)
-                    bad_col = find_bad_columns(bad_row, src_cols, table_name, schema, conn)
+                    try:
+                        bad_row = find_bad_row(query, params, conn)
+                        bad_col = find_bad_columns(bad_row, src_cols, table_name, schema, conn)
+                    except:
+                        pass # Don't raise any errors from debug methods
                     raise
                 purge_dummy_rows(cur, table_name, schema) # Purge dummy rows after each batch to avoid duplicate dummy rows (which breaks primary key constraint)
                 row_count += len(params)
