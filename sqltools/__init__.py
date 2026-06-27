@@ -210,6 +210,11 @@ def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", fast_ex
         truncate(table_name, schema, database)
     elif if_exists != "append":
         raise Exception("if_exists must be 'replace' or 'append'!")
+    # Sanitise file
+    with open(local_fn, "rb") as f:
+        res = re.sub(b"\r", b"", f.read()) # Remove carriage returns
+    with open(local_fn, "wb") as f:
+        f.write(res)
     # Read file
     print(f"Reading '{local_fn}'...")
     with open(local_fn, "r", encoding = encoding) as f:
