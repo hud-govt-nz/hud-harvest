@@ -4,6 +4,8 @@ import pyodbc
 import math, itertools
 import subprocess
 import pandas as pd
+import numpy as np
+from io import BytesIO
 from datetime import datetime
 from sqlalchemy import event
 from sqlalchemy.engine import URL, create_engine
@@ -210,59 +212,59 @@ def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", fast_ex
         truncate(table_name, schema, database)
     elif if_exists != "append":
         raise Exception("if_exists must be 'replace' or 'append'!")
-    # Sanitise file
-    with open(local_fn, "rb") as f:
-        res = re.sub(b"\r", b"", f.read()) # Remove carriage returns
-    with open(local_fn, "wb") as f:
-        f.write(res)
     # Read file
     print(f"Reading '{local_fn}'...")
-    with open(local_fn, "r", encoding = encoding) as f:
-        reader = csv.reader(f)
-        src_cols = next(reader) + ["task_name"]
-        query = make_insert_query(src_cols, table_name, schema, database, strict_mode)
-        print(f"Loading data into [{schema}].[{table_name}]...")
-        conn = pyodbc_conn(database)
-        cur = conn.cursor()
-        if fast_executemany:
-            cur.fast_executemany = True
-            set_input_sizes(cur, table_name, schema, database)
-            dummy_row = make_dummy_row(src_cols, table_name, schema, database) # Dummy row required for fast_execute
-        row_count = 0
+    with open(local_fn, "rb") as f:
+        res = re.sub(b"\r", b"", f.read()) # Remove carriage returns
+        df = pd.read_csv(BytesIO(res), dtype = str)
+        df = df.replace({np.nan: None}) # Remove NaNs
+    # Set up query
+    df["task_name"] = task_name
+    src_cols = list(df.columns)
+    query = make_insert_query(src_cols, table_name, schema, database, strict_mode)
+    dummy_row = make_dummy_row(src_cols, table_name, schema, database) # Dummy row required for fast_execute
+    # Load
+    print(f"Loading data into [{schema}].[{table_name}]...")
+    conn = pyodbc_conn(database)
+    cur = conn.cursor()
+    if fast_executemany:
+        cur.fast_executemany = True
+        set_input_sizes(cur, table_name, schema, database)
+    for i in range(0, len(df), batch_size):
         start = datetime.now()
-        while True:
-            params = []
-            for row in reader:
-                row = [None if r == '' else r for r in row]
-                params.append(row + [task_name])
-                if len(params) >= batch_size: break
-            if params:
-                try:
-                    if fast_executemany:
-                        cur.executemany(query, [dummy_row] + params)
-                    else:
-                        cur.executemany(query, params)
-                except KeyboardInterrupt:
-                    print("Aborted.")
-                    sys.exit()
-                except:
-                    print("\033[1;31mLoad failed. Aborting and trying to find the problem...\033[0m")
-                    cur.rollback()
-                    try:
-                        bad_row = find_bad_row(query, params, conn)
-                        bad_col = find_bad_columns(bad_row, src_cols, table_name, schema, conn)
-                    except:
-                        pass # Don't raise any errors from debug methods
-                    raise
-                purge_dummy_rows(cur, table_name, schema) # Purge dummy rows after each batch to avoid duplicate dummy rows (which breaks primary key constraint)
-                row_count += len(params)
-                if not row_count % 50000:
-                    print(f"{row_count} rows loaded in {datetime.now() - start}s...")
-                    start = datetime.now()
+        batch = df.loc[i:i + batch_size - 1]
+        params = [list(r[1]) for r in batch.iterrows()]
+        try:
+            if fast_executemany:
+                cur.executemany(query, [dummy_row] + params)
             else:
-                cur.commit()
-                print(f"{row_count} rows loaded in {datetime.now() - start}s.")
-                return row_count
+                cur.executemany(query, params)
+        except KeyboardInterrupt:
+            print("Aborted.")
+            sys.exit()
+        except:
+            print(f"\033[1;31mLoad failed between rows {i}-{i + batch_size}. Aborting and trying to find the problem...\033[0m")
+            cur.rollback()
+            try:
+                bad_row = find_bad_row(query, params, conn)
+                if bad_row:
+                    bad_col = find_bad_columns(bad_row, src_cols, table_name, schema, conn)
+            except:
+                pass # Don't raise any errors from debug methods
+            raise
+        purge_dummy_rows(cur, table_name, schema) # Purge dummy rows after each batch to avoid duplicate dummy rows (which breaks primary key constraint)
+        # Log every 50000 rows
+        row_count = i + len(params)
+        if not row_count % 50000:
+            print(f"{row_count} rows loaded in {datetime.now() - start}s...")
+    else:
+        if len(df) == 0:
+            print("Nothing to load!")
+            return 0
+        else:
+            cur.commit()
+            print(f"{row_count} rows loaded in {datetime.now() - start}s.")
+            return row_count
 
 # pyodbc has a known issue where if the type for the first row is None, then
 # various type-detection stuff kicks in and the fastexecute becomes very very
