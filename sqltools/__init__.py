@@ -230,8 +230,8 @@ def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", fast_ex
     if fast_executemany:
         cur.fast_executemany = True
         set_input_sizes(cur, table_name, schema, database)
+    start = datetime.now()
     for i in range(0, len(df), batch_size):
-        start = datetime.now()
         batch = df.loc[i:i + batch_size - 1]
         params = [list(r[1]) for r in batch.iterrows()]
         try:
@@ -257,6 +257,7 @@ def sql_loader(local_fn, task, if_exists = "append", encoding = "utf-8", fast_ex
         row_count = i + len(params)
         if not row_count % 50000:
             print(f"{row_count} rows loaded in {datetime.now() - start}s...")
+            start = datetime.now()
     else:
         if len(df) == 0:
             print("Nothing to load!")
