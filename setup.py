@@ -5,7 +5,7 @@ setup(
     description="HUD harvest/store/tracking functions",
     url="https://github.com/hud-govt-nz/hud-harvest",
     author="Keith Ng",
-    author_email="keith.ng@hud.govt.nz",
+    author_email="keith.ng@mcert.govt.nz",
     packages=[
         "scraper", "playwrightscraper",
         "sqltools", "dbloader", "taskmaster",

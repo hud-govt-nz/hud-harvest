@@ -220,7 +220,7 @@ class DBLoadTask:
         ping : list
             A list of entities to be pinged. e.g.:
             [
-                {"id": "keith.ng@hud.govt.nz", "name": "Keith Ng"}
+                {"id": "keith.ng@mcert.govt.nz", "name": "Keith Ng"}
             ]
         """
         # Determine overall status
